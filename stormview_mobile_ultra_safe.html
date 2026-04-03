@@ -1,0 +1,2355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StormView WX - Safe Restore</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root{
+  --bg:#06090f;--surf:#0a1220;--brd:#1a2f48;
+  --acc:#00d4ff;--txt:#cde4f5;--muted:#3a5870;--grn:#00ff88;
+  --mono:'Share Tech Mono',monospace;
+  --cond:'Barlow Condensed',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--txt);font-family:var(--cond);}
+body{display:flex;flex-direction:column;}
+
+/* ── HEADER ── */
+#hdr{display:flex;align-items:center;gap:10px;padding:6px 14px;background:rgba(8,12,20,.92);border-bottom:1px solid rgba(39,78,122,.72);backdrop-filter:blur(10px);flex-shrink:0;}
+.logo{font-size:18px;font-weight:700;letter-spacing:3px;color:var(--acc);display:flex;align-items:center;gap:6px;}
+.pdot{width:7px;height:7px;border-radius:50%;background:var(--acc);animation:pulse 1.4s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.3;transform:scale(.6);}}
+.chip{font-family:var(--mono);font-size:9px;color:var(--grn);border:1px solid var(--grn);border-radius:3px;padding:1px 6px;letter-spacing:2px;animation:blink 1.8s steps(1) infinite;}
+@keyframes blink{50%{opacity:.3;}}
+#hdr-info{font-family:var(--mono);font-size:10px;color:var(--muted);}
+#hdr-info b{color:var(--acc);}
+.zbadge{font-family:var(--mono);font-size:10px;color:var(--acc);background:rgba(0,212,255,.07);border:1px solid var(--brd);border-radius:3px;padding:1px 7px;}
+#utc{font-family:var(--mono);font-size:11px;color:var(--acc);margin-left:auto;background:rgba(0,212,255,.05);border:1px solid var(--brd);border-radius:3px;padding:2px 8px;}
+
+/* ── LAYOUT ── */
+#wrap{display:flex;flex:1;overflow:hidden;}
+#left{width:260px;flex-shrink:0;background:rgba(10,18,32,.84);backdrop-filter:blur(10px);border-right:1px solid rgba(26,47,72,.92);display:flex;flex-direction:column;overflow-y:auto;box-shadow:0 0 28px rgba(0,0,0,.34);}
+#right{width:280px;flex-shrink:0;background:rgba(10,18,32,.84);backdrop-filter:blur(10px);border-left:1px solid rgba(26,47,72,.92);display:flex;flex-direction:column;overflow-y:auto;box-shadow:0 0 28px rgba(0,0,0,.34);}
+.sec{border-bottom:1px solid var(--brd);padding:11px 12px;}
+.st{font-size:10px;font-weight:700;letter-spacing:2.5px;color:var(--muted);text-transform:uppercase;margin-bottom:8px;}
+
+/* ── COLLAPSIBLE SECTIONS ── */
+.sec.collapsible>.st{display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;margin-bottom:0;}
+.sec.collapsible>.st::after{content:'▾';color:var(--acc);font-size:11px;letter-spacing:0;margin-left:4px;}
+.sec.collapsible.collapsed>.st::after{content:'▸';}
+.sec.collapsible.collapsed>.st{margin-bottom:0;}
+.sec.collapsible.collapsed>*:not(.st){display:none;}
+.sec.collapsible>.st{margin-bottom:7px;}
+
+/* ── LAYER BUTTONS ── */
+.lbtn{display:flex;align-items:center;gap:8px;width:100%;padding:8px 10px;margin-bottom:3px;background:transparent;border:1px solid var(--brd);border-radius:5px;color:var(--muted);cursor:pointer;font-family:var(--cond);font-size:14px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;transition:all .12s;text-align:left;}
+.lbtn:hover{border-color:var(--acc);color:var(--txt);}
+.lbtn.on{border-color:var(--acc);background:rgba(0,212,255,.07);color:var(--acc);}
+.ic{font-size:13px;width:20px;text-align:center;flex-shrink:0;}
+.sub{font-size:10px;color:var(--muted);font-weight:400;letter-spacing:0;text-transform:none;}
+
+/* ── WARN TOGGLES ── */
+.wtgl{display:flex;align-items:center;gap:8px;width:100%;padding:6px 9px;margin-bottom:3px;background:transparent;border:1px solid var(--brd);border-radius:5px;cursor:pointer;font-family:var(--mono);font-size:10px;transition:all .12s;text-align:left;}
+.wtgl.on{background:rgba(255,255,255,.02);}
+.wd{width:11px;height:11px;border-radius:2px;flex-shrink:0;}
+
+/* ── SLIDERS ── */
+.row{display:flex;align-items:center;gap:8px;margin-top:5px;}
+.row label{font-family:var(--mono);font-size:10px;color:var(--muted);width:58px;}
+input[type=range]{flex:1;-webkit-appearance:none;height:4px;background:var(--brd);border-radius:2px;outline:none;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--acc);cursor:pointer;}
+.vl{font-family:var(--mono);font-size:10px;color:var(--acc);width:30px;text-align:right;}
+
+/* ── CTRL BTNS ── */
+.cb{flex:1;padding:6px 4px;background:transparent;border:1px solid var(--brd);border-radius:5px;color:var(--muted);cursor:pointer;font-family:var(--mono);font-size:11px;transition:all .12s;}
+.cb:hover{border-color:var(--acc);color:var(--acc);}
+.cb.on{background:var(--acc);color:#000;border-color:var(--acc);}
+
+/* ── LEGEND ── */
+#lgc{width:100%;height:14px;border-radius:2px;display:block;}
+.ltks{display:flex;justify-content:space-between;margin-top:3px;}
+.ltk{font-family:var(--mono);font-size:9px;color:var(--muted);}
+.lunit{font-family:var(--cond);font-size:10px;color:var(--muted);margin-top:3px;}
+
+/* ── ALERTS ── */
+.al{display:flex;align-items:flex-start;gap:6px;padding:5px 0;border-bottom:1px solid var(--brd);cursor:pointer;border-radius:3px;transition:background .1s;}
+.al:hover{background:rgba(0,212,255,.05);}
+.al:last-child{border-bottom:none;}
+.ad{width:8px;height:8px;border-radius:50%;margin-top:4px;flex-shrink:0;}
+.atx{font-size:10px;line-height:1.4;}
+.aev{font-weight:600;color:var(--txt);}
+.aar{color:var(--muted);font-size:9px;}
+
+/* ── MAP ── */
+#map-wrap{flex:1;position:relative;overflow:hidden;background:#081018;}
+#map{width:100%;height:100%;}
+.leaflet-container{background:#06090f!important;}
+.leaflet-control-zoom{display:none!important;}
+.leaflet-control-scale-line{background:rgba(6,9,15,.9)!important;border-color:var(--acc)!important;color:#8ab!important;font-family:var(--mono)!important;font-size:9px!important;}
+.leaflet-popup-content-wrapper{background:#060d18!important;border:1px solid var(--brd)!important;border-radius:5px!important;color:var(--txt)!important;box-shadow:0 4px 20px rgba(0,0,0,.9)!important;}
+.leaflet-popup-tip{background:#060d18!important;}
+.leaflet-popup-close-button{color:var(--muted)!important;}
+
+.radar-sharp{
+  image-rendering: pixelated;
+  filter: contrast(1.15) saturate(1.15);
+}
+
+/* ── TORNADO BANNER ── */
+#tor-ban{position:absolute;top:52px;left:50%;transform:translateX(-50%);z-index:700;display:none;
+  background:rgba(30,0,0,.97);border:2px solid #ff2020;border-radius:5px;
+  padding:5px 18px;font-family:var(--mono);font-size:11px;color:#ff4040;
+  font-weight:bold;letter-spacing:1px;white-space:nowrap;
+  animation:tob 1s steps(1) infinite;box-shadow:0 0 24px rgba(255,32,32,.5);}
+@keyframes tob{50%{border-color:#800;color:#c03030;}}
+
+/* ── TOP MODE BAR ── */
+#modebar{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:640;display:flex;gap:6px;background:rgba(255,255,255,.95);padding:8px 12px;border-radius:14px;box-shadow:0 12px 28px rgba(0,0,0,.35);align-items:center;}
+.mtab{border:none;background:transparent;color:#263240;font-family:var(--cond);font-size:13px;font-weight:700;padding:8px 12px;border-radius:10px;cursor:pointer;display:flex;align-items:center;gap:6px;}
+.mtab.on{background:#2266ff;color:#fff;}
+.mtab.dim{opacity:.65;}
+/* ── FLOATING WX BAR ── */
+#wxbar{position:absolute;top:10px;left:16px;right:16px;z-index:650;display:flex;gap:8px;align-items:center;pointer-events:none;flex-wrap:wrap;}
+.wxg{display:flex;gap:6px;align-items:center;background:rgba(8,12,20,.88);border:1px solid rgba(51,85,122,.95);box-shadow:0 10px 28px rgba(0,0,0,.34);backdrop-filter:blur(9px);border-radius:16px;padding:8px 10px;pointer-events:auto;}
+.wxt{font-family:var(--mono);font-size:9px;letter-spacing:1.6px;color:#86aaca;text-transform:uppercase;margin-right:2px;}
+.wxchip{padding:6px 10px;border:1px solid rgba(78,111,150,.78);border-radius:999px;background:rgba(17,26,40,.96);color:#d7ebfa;font-family:var(--mono);font-size:10px;line-height:1;white-space:nowrap;box-shadow:inset 0 1px 0 rgba(255,255,255,.03);}
+.wxchip.on{background:linear-gradient(180deg,rgba(36,146,255,.35),rgba(10,78,134,.52));border-color:#74c7ff;color:#f4fbff;box-shadow:inset 0 0 0 1px rgba(145,214,255,.18),0 0 14px rgba(57,164,255,.12);}
+.wxchip.warn{background:linear-gradient(180deg,rgba(255,174,0,.28),rgba(113,72,0,.42));border-color:#ffc04a;color:#fff0c7;}
+.wxchip.tor{background:linear-gradient(180deg,rgba(255,70,70,.34),rgba(112,18,18,.42));border-color:#ff8686;color:#ffe3e3;}
+#map-wrap .compact-note{position:absolute;top:60px;left:16px;z-index:650;background:rgba(7,12,22,.74);border:1px solid rgba(39,78,122,.9);border-radius:999px;padding:6px 10px;color:#9bc1da;font-family:var(--mono);font-size:9px;backdrop-filter:blur(6px);}
+#timeline{position:absolute;left:50%;bottom:44px;transform:translateX(-50%);z-index:650;display:flex;align-items:center;gap:8px;background:rgba(8,12,20,.88);border:1px solid rgba(51,85,122,.95);border-radius:16px;padding:8px 12px;box-shadow:0 10px 28px rgba(0,0,0,.34);backdrop-filter:blur(9px);}
+#timeline .tlchip{font-family:var(--mono);font-size:10px;color:#d7ebfa;padding:6px 10px;border-radius:999px;border:1px solid rgba(78,111,150,.78);background:rgba(17,26,40,.96);}
+#timeline .tlchip.on{background:linear-gradient(180deg,rgba(36,146,255,.35),rgba(10,78,134,.52));border-color:#74c7ff;color:#f4fbff;}
+#timeline .tlbar{width:220px;height:6px;border-radius:999px;background:linear-gradient(90deg,#1f334d,#51b8ff);position:relative;cursor:pointer;}
+#minitools{position:absolute;top:148px;left:16px;z-index:645;display:flex;flex-direction:column;gap:8px;}
+.mtbtn{width:42px;height:42px;border-radius:14px;border:1px solid rgba(51,85,122,.95);background:rgba(8,12,20,.88);backdrop-filter:blur(9px);box-shadow:0 10px 28px rgba(0,0,0,.34);display:flex;align-items:center;justify-content:center;color:#d7ebfa;font-family:var(--mono);font-size:12px;}
+.mtbtn.on{background:linear-gradient(180deg,rgba(36,146,255,.35),rgba(10,78,134,.52));border-color:#74c7ff;color:#f4fbff;}
+#modeldock{position:absolute;top:148px;right:16px;z-index:645;width:280px;background:rgba(8,12,20,.88);border:1px solid rgba(51,85,122,.95);border-radius:18px;box-shadow:0 10px 28px rgba(0,0,0,.34);backdrop-filter:blur(9px);padding:12px;}
+#modeldock .mdh{font-family:var(--mono);font-size:10px;letter-spacing:1.6px;color:#86aaca;text-transform:uppercase;margin-bottom:10px;}
+#modeldock .mdgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+#modeldock .mdcell{padding:10px;border-radius:14px;border:1px solid rgba(78,111,150,.78);background:rgba(17,26,40,.96);}
+#modeldock .mdlabel{font-family:var(--mono);font-size:9px;color:#7fa5c3;text-transform:uppercase;letter-spacing:1px;}
+#modeldock .mdval{font-family:var(--mono);font-size:12px;color:#e8f6ff;margin-top:5px;}
+
+/* ── SEARCH ── */
+#sbar{position:absolute;top:96px;left:50%;transform:translateX(-50%);z-index:600;display:flex;width:340px;}
+#li{flex:1;background:rgba(6,10,20,.95);border:1px solid var(--brd);border-right:none;border-radius:4px 0 0 4px;color:var(--txt);font-family:var(--mono);font-size:11px;padding:6px 9px;outline:none;}
+#li:focus{border-color:var(--acc);}
+#li::placeholder{color:var(--muted);}
+#lbtn{background:var(--acc);border:none;border-radius:0 4px 4px 0;color:#000;font-family:var(--cond);font-size:11px;font-weight:700;padding:6px 11px;cursor:pointer;}
+#lbtn:hover{background:#33dfff;}
+#sg{position:absolute;top:100%;left:0;right:44px;background:rgba(6,10,20,.98);border:1px solid var(--brd);border-top:none;border-radius:0 0 4px 4px;z-index:700;display:none;max-height:130px;overflow-y:auto;}
+.si{padding:5px 9px;font-family:var(--mono);font-size:10px;color:var(--txt);cursor:pointer;border-bottom:1px solid var(--brd);}
+.si:hover{background:rgba(0,212,255,.08);color:var(--acc);}
+
+/* ── ZOOM CTRL ── */
+#zc{position:absolute;bottom:36px;right:10px;z-index:600;display:flex;flex-direction:column;gap:3px;}
+.zb{width:28px;height:28px;background:rgba(6,9,15,.92);border:1px solid var(--brd);border-radius:4px;color:var(--txt);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .1s;}
+.zb:hover{border-color:var(--acc);color:var(--acc);}
+
+/* ── STATUS BAR ── */
+#sb{position:absolute;bottom:0;left:0;right:0;z-index:600;background:rgba(0,0,0,.7);border-top:1px solid var(--brd);font-family:var(--mono);font-size:9px;color:var(--muted);padding:2px 10px;display:flex;align-items:center;gap:7px;}
+.sp{width:8px;height:8px;border:1.5px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .7s linear infinite;display:none;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* ── BOTTOM BAR ── */
+#bot{display:flex;align-items:center;gap:10px;padding:3px 12px;background:var(--surf);border-top:1px solid var(--brd);font-family:var(--mono);font-size:9px;color:var(--muted);flex-shrink:0;}
+.bs{color:var(--brd);}
+#bot span{color:var(--txt);}
+
+/* ── STAT BOX ── */
+.sbox{padding:6px;border-bottom:1px solid var(--brd);}
+.slbl{font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;}
+.sval{font-family:var(--mono);font-size:17px;color:var(--acc);margin-top:1px;}
+
+
+/* ── WEATHERBELL PANEL ── */
+#wb-toggle{width:100%;justify-content:center;}
+#wb-panel{position:absolute;top:54px;right:10px;z-index:750;width:520px;height:340px;background:rgba(6,9,15,.98);border:1px solid var(--brd);border-radius:8px;overflow:hidden;box-shadow:0 10px 28px rgba(0,0,0,.55);display:none;}
+#wb-panel.open{display:block;}
+#wb-head{height:36px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;background:var(--surf);border-bottom:1px solid var(--brd);}
+#wb-title{font-family:var(--cond);font-size:12px;font-weight:700;letter-spacing:.5px;color:var(--txt);}
+#wb-actions{display:flex;align-items:center;gap:6px;}
+.wb-link,.wb-x{background:transparent;border:1px solid var(--brd);border-radius:4px;color:var(--acc);font-family:var(--mono);font-size:10px;padding:4px 7px;text-decoration:none;cursor:pointer;}
+.wb-link:hover,.wb-x:hover{border-color:var(--acc);}
+#wb-frame{width:100%;height:calc(100% - 36px);border:0;background:#000;}
+#wb-fallback{display:none;height:calc(100% - 36px);padding:14px;color:var(--txt);font-family:var(--cond);flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:8px;}
+#wb-fallback p{font-size:13px;line-height:1.45;color:#9db7cb;margin-bottom:12px;}
+#wb-fallback .wb-note{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:10px;}
+#wb-open{display:inline-block;margin-top:10px;padding:7px 16px;background:var(--acc);color:#000;font-family:var(--cond);font-size:13px;font-weight:700;text-decoration:none;border-radius:5px;}
+@media (max-width: 1100px){#wb-panel{width:420px;height:300px;}}
+@media (max-width: 800px){#wb-panel{left:10px;right:10px;width:auto;height:280px;}}
+
+
+/* ── MOBILE SAFE CSS ONLY ── */
+@media (max-width: 760px){
+  html,body{height:100%;overflow:auto;}
+  body{overflow:auto;}
+
+  #hdr{padding:8px 10px;gap:8px;}
+  .logo{font-size:15px;letter-spacing:2px;}
+  #hdr-info{display:none;}
+  #utc{font-size:10px;padding:2px 6px;}
+
+  #wrap{
+    display:flex;
+    flex-direction:column;
+    height:auto;
+    min-height:calc(100vh - 42px);
+    overflow:visible;
+  }
+
+  #map-wrap{
+    order:1;
+    position:relative;
+    height:56vh;
+    min-height:380px;
+    flex:none;
+  }
+
+  #left{
+    order:2;
+    width:100%;
+    height:auto;
+    max-height:none;
+    overflow:visible;
+    border-right:none;
+    border-top:1px solid var(--brd);
+    box-shadow:none;
+    backdrop-filter:none;
+  }
+
+  #right{
+    order:3;
+    width:100%;
+    height:auto;
+    max-height:none;
+    overflow:visible;
+    border-left:none;
+    border-top:1px solid var(--brd);
+    box-shadow:none;
+    backdrop-filter:none;
+  }
+
+  #wxbar{
+    top:8px;
+    left:8px;
+    right:8px;
+    gap:5px;
+    flex-wrap:nowrap;
+    overflow-x:auto;
+    overflow-y:hidden;
+    padding-bottom:2px;
+    scrollbar-width:none;
+  }
+  #wxbar::-webkit-scrollbar{display:none;}
+  .wxg{flex:0 0 auto;padding:6px 8px;border-radius:12px;}
+  .wxt{font-size:8px;}
+  .wxchip{font-size:9px;padding:5px 8px;}
+
+  #sbar{
+    top:52px;
+    left:8px;
+    right:8px;
+    width:auto;
+    transform:none;
+  }
+
+  #modebar{
+    top:auto;
+    bottom:86px;
+    left:8px;
+    right:8px;
+    transform:none;
+    gap:4px;
+    padding:6px 8px;
+    overflow-x:auto;
+    justify-content:flex-start;
+    scrollbar-width:none;
+  }
+  #modebar::-webkit-scrollbar{display:none;}
+  .mtab{font-size:11px;padding:7px 9px;white-space:nowrap;}
+
+  #station-banner{
+    top:92px;
+    left:8px;
+    right:8px;
+    transform:none;
+    justify-content:space-between;
+    font-size:10px;
+    padding:6px 10px;
+  }
+
+  #tor-ban{
+    top:92px;
+    left:8px;
+    right:8px;
+    transform:none;
+    font-size:10px;
+    padding:5px 10px;
+    white-space:normal;
+    text-align:center;
+  }
+
+  #timeline{
+    left:8px;
+    right:8px;
+    bottom:36px;
+    transform:none;
+    gap:6px;
+    padding:6px 8px;
+    overflow-x:auto;
+    justify-content:flex-start;
+    scrollbar-width:none;
+  }
+  #timeline::-webkit-scrollbar{display:none;}
+  #timeline .tlchip{font-size:9px;padding:5px 8px;white-space:nowrap;}
+  #timeline .tlbar{width:120px;height:6px;flex:0 0 auto;}
+
+  #zc{bottom:132px;right:8px;}
+  .zb{width:34px;height:34px;font-size:17px;}
+
+  #minitools,#modeldock{display:none !important;}
+  #warn-card{
+    top:72px;
+    left:8px;
+    right:8px;
+    transform:none;
+    width:auto;
+    max-width:none;
+  }
+  #wb-panel{
+    left:8px;
+    right:8px;
+    top:72px;
+    width:auto;
+    height:48vh;
+  }
+
+  #bot{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    font-size:8px;
+    padding:6px 8px;
+  }
+}
+
+
+/* ── MOBILE ULTRA-SAFE MAP VIEW ── */
+@media (max-width: 760px){
+  html,body{height:100%;overflow:hidden;}
+  body{display:flex;flex-direction:column;overflow:hidden;}
+
+  #hdr{padding:8px 10px;gap:8px;flex-shrink:0;}
+  .logo{font-size:15px;letter-spacing:2px;}
+  #hdr-info{display:none;}
+  #utc{font-size:10px;padding:2px 6px;}
+
+  /* Keep original flex layout so Leaflet map sizing stays valid */
+  #wrap{
+    display:flex !important;
+    flex:1 1 auto !important;
+    min-height:0 !important;
+    overflow:hidden !important;
+  }
+
+  /* Hide side panels on phone for reliability */
+  #left,#right,#bot{display:none !important;}
+
+  /* Let map take full remaining space */
+  #map-wrap{
+    flex:1 1 auto !important;
+    width:100% !important;
+    min-width:0 !important;
+    min-height:0 !important;
+    position:relative !important;
+    overflow:hidden !important;
+  }
+  #map{
+    width:100% !important;
+    height:100% !important;
+  }
+
+  #wxbar{
+    top:8px;left:8px;right:8px;
+    gap:5px;flex-wrap:nowrap;
+    overflow-x:auto;overflow-y:hidden;
+    padding-bottom:2px;scrollbar-width:none;
+  }
+  #wxbar::-webkit-scrollbar{display:none;}
+  .wxg{flex:0 0 auto;padding:6px 8px;border-radius:12px;}
+  .wxt{font-size:8px;}
+  .wxchip{font-size:9px;padding:5px 8px;}
+
+  #sbar{
+    top:52px;left:8px;right:8px;
+    width:auto;transform:none;
+  }
+  #li{font-size:12px;padding:8px 10px;}
+  #lbtn{font-size:12px;padding:8px 10px;}
+
+  #modebar{
+    top:auto;bottom:84px;left:8px;right:8px;
+    transform:none;gap:4px;padding:6px 8px;
+    overflow-x:auto;justify-content:flex-start;
+    scrollbar-width:none;
+  }
+  #modebar::-webkit-scrollbar{display:none;}
+  .mtab{font-size:11px;padding:7px 9px;white-space:nowrap;}
+
+  #station-banner{
+    top:92px;left:8px;right:8px;
+    transform:none;justify-content:space-between;
+    font-size:10px;padding:6px 10px;
+  }
+
+  #tor-ban{
+    top:92px;left:8px;right:8px;
+    transform:none;font-size:10px;padding:5px 10px;
+    white-space:normal;text-align:center;
+  }
+
+  #timeline{
+    left:8px;right:8px;bottom:34px;
+    transform:none;gap:6px;padding:6px 8px;
+    overflow-x:auto;justify-content:flex-start;
+    scrollbar-width:none;max-width:none;
+  }
+  #timeline::-webkit-scrollbar{display:none;}
+  #timeline .tlchip{font-size:9px;padding:5px 8px;white-space:nowrap;}
+  #timeline .tlbar{width:120px;height:6px;flex:0 0 auto;}
+
+  #zc{bottom:126px;right:8px;}
+  .zb{width:34px;height:34px;font-size:17px;}
+
+  #minitools,#modeldock,#warn-card,#wb-panel{display:none !important;}
+
+  #sb{font-size:8px;padding:3px 8px;}
+}
+
+@media (max-width: 420px){
+  #sbar{top:48px;}
+  #station-banner,#tor-ban{top:88px;}
+  #timeline .tlbar{width:90px;}
+}
+
+/* ── SCROLLBARS ── */
+#left::-webkit-scrollbar,#right::-webkit-scrollbar{width:3px;}
+#left::-webkit-scrollbar-thumb,#right::-webkit-scrollbar-thumb{background:var(--brd);}
+
+/* ── WARNING DETAIL CARD ── */
+#warn-card{position:absolute;top:54px;left:50%;transform:translateX(-50%);z-index:800;width:500px;max-width:calc(100vw - 500px);
+  background:rgba(4,7,15,.98);border-radius:10px;box-shadow:0 12px 48px rgba(0,0,0,.9);
+  display:none;overflow:hidden;font-family:var(--mono);}
+#warn-card.open{display:block;}
+#warn-card-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;}
+#warn-card-body{padding:12px 14px;max-height:70vh;overflow-y:auto;font-size:10px;line-height:1.75;color:#c8dff0;}
+#warn-card-body::-webkit-scrollbar{width:3px;}
+#warn-card-body::-webkit-scrollbar-thumb{background:var(--brd);}
+.wc-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
+.wc-chip{padding:4px 10px;border-radius:5px;font-size:10px;border:1px solid;white-space:nowrap;font-weight:600;}
+.wc-text{white-space:pre-wrap;font-size:10px;line-height:1.7;color:#9bbdd4;margin-top:8px;border-top:1px solid var(--brd);padding-top:8px;}
+.wc-bold{color:#e8f4ff;font-weight:bold;}
+.wc-section{margin-bottom:6px;font-size:10px;}
+.wc-label{color:#86aaca;font-size:9px;letter-spacing:1px;text-transform:uppercase;margin-bottom:2px;}
+
+/* ── STATION ISOLATION BANNER ── */
+#station-banner{position:absolute;top:54px;left:50%;transform:translateX(-50%);z-index:660;
+  display:none;align-items:center;gap:10px;
+  background:rgba(0,30,60,.96);border:1px solid var(--acc);border-radius:8px;
+  padding:6px 14px;font-family:var(--mono);font-size:11px;color:var(--acc);}
+#station-banner.on{display:flex;}
+#station-banner button{background:rgba(0,212,255,.15);border:1px solid var(--acc);border-radius:4px;
+  color:var(--acc);font-family:var(--mono);font-size:10px;padding:3px 8px;cursor:pointer;}
+#station-banner button:hover{background:rgba(0,212,255,.3);}
+.spc-highlight-pulse{animation:spc-glow 0.6s ease-in-out infinite alternate;}
+@keyframes spc-glow{
+  from{stroke-opacity:1;stroke-width:4px;}
+  to{stroke-opacity:0.3;stroke-width:8px;}
+}
+</style>
+</head>
+<body>
+
+<div id="hdr">
+  <div class="logo"><div class="pdot"></div>StormView</div>
+  <div class="chip">LIVE</div>
+  <div id="hdr-info">Radar + NWS layers &nbsp;|&nbsp; <b id="upd">Connecting...</b></div>
+  <div class="sp" id="hsp"></div>
+  <div class="zbadge" id="zbadge">Zoom 5</div>
+  <div id="utc">--:--Z</div>
+</div>
+
+<div id="wrap">
+
+<!-- LEFT PANEL -->
+<div id="left">
+
+  <!-- Radar / Product (always open) -->
+  <div class="sec">
+    <div class="st">Radar / Product</div>
+    <button class="lbtn on" id="btn-ref" onclick="setLayer('ref')">
+      <span class="ic">📡</span><div><div>Reflectivity (dBZ)</div><div class="sub">Storm radar composite</div></div>
+    </button>
+    <button class="lbtn" id="btn-sat" onclick="setLayer('sat')">
+      <span class="ic">🛰</span><div><div>Satellite</div><div class="sub">Infrared cloud view</div></div>
+    </button>
+    <button class="lbtn" id="btn-vel" onclick="setLayer('vel')">
+      <span class="ic">⚙️</span><div><div>Velocity</div><div class="sub">N/A — no live feed</div></div>
+    </button>
+  </div>
+
+  <!-- Radar Station — collapsible, open -->
+  <div class="sec collapsible" id="sec-radar-station">
+    <div class="st" onclick="toggleSection('sec-radar-station')">Radar Station</div>
+    <button class="wtgl on" id="ov-nexrad" onclick="toggleNexradDots()">
+      <div class="wd" style="background:#00ff88"></div><span style="color:#88ffcc">NEXRAD Stations</span>
+    </button>
+    <div style="font-family:var(--mono);font-size:8px;color:var(--muted);margin-top:5px;">Click a cyan dot or city to switch radar stations. Replay pauses in station mode.</div>
+    <div style="font-family:var(--mono);font-size:8px;color:var(--acc);margin-top:4px;">Active: <span id="active-stn">CONUS Composite</span></div>
+    <button class="cb" style="margin-top:6px;font-size:9px;width:100%;" onclick="setStation(null)">↺ CONUS Composite</button>
+  </div>
+
+  <!-- Map Overlays — collapsible, open -->
+  <div class="sec collapsible" id="sec-map-overlays">
+    <div class="st" onclick="toggleSection('sec-map-overlays')">Map Overlays</div>
+    <button class="wtgl on" id="ov-county" onclick="toggleOverlay('county')">
+      <div class="wd" style="background:#9fb4c7"></div><span style="color:#cfe4f9">County Borders</span>
+    </button>
+    <button class="wtgl on" id="ov-state" onclick="toggleOverlay('state')">
+      <div class="wd" style="background:#ffffff"></div><span style="color:#ffffff">State Borders</span>
+    </button>
+    <button class="wtgl on" id="ov-cwa" onclick="toggleOverlay('cwa')">
+      <div class="wd" style="background:#00d4ff"></div><span style="color:#6fe6ff">NWS CWA Borders</span>
+    </button>
+  </div>
+
+  <!-- SPC Outlooks — collapsible, collapsed by default -->
+  <div class="sec collapsible collapsed" id="sec-spc-outlooks">
+    <div class="st" onclick="toggleSection('sec-spc-outlooks')">SPC Outlooks</div>
+    <button class="wtgl" id="ov-d1" onclick="toggleSPCDay(1)">
+      <div class="wd" style="background:#f6f67a"></div><span style="color:#ffff88">Day 1 Convective</span>
+    </button>
+    <button class="wtgl" id="ov-d2" onclick="toggleSPCDay(2)">
+      <div class="wd" style="background:#e6a033"></div><span style="color:#ffc060">Day 2 Convective</span>
+    </button>
+    <button class="wtgl" id="ov-d3" onclick="toggleSPCDay(3)">
+      <div class="wd" style="background:#e63333"></div><span style="color:#ff8888">Day 3 Convective</span>
+    </button>
+    <div style="font-family:var(--mono);font-size:8px;color:var(--muted);margin-top:4px;">All off by default — click to load &amp; toggle each day.</div>
+  </div>
+
+  <!-- Warnings & Watches — collapsible, collapsed by default -->
+  <div class="sec collapsible collapsed" id="sec-warnings-watches">
+    <div class="st" onclick="toggleSection('sec-warnings-watches')">⚠ Warnings &amp; Watches</div>
+    <button class="wtgl on" id="wt-TOR" onclick="tw('TOR')">
+      <div class="wd" style="background:#ff2020"></div><span style="color:#ff6060">Tornado Warning</span>
+    </button>
+    <button class="wtgl on" id="wt-SVR" onclick="tw('SVR')">
+      <div class="wd" style="background:#ff8800"></div><span style="color:#ffaa55">Svr T-Storm Warn</span>
+    </button>
+    <button class="wtgl on" id="wt-TWA" onclick="tw('TWA')">
+      <div class="wd" style="background:#ffff00"></div><span style="color:#ffff55">Tornado Watch</span>
+    </button>
+    <button class="wtgl on" id="wt-SWA" onclick="tw('SWA')">
+      <div class="wd" style="background:#dbdb00"></div><span style="color:#eeee55">Svr T-Storm Watch</span>
+    </button>
+    <button class="wtgl on" id="wt-MCD" onclick="tw('MCD')">
+      <div class="wd" style="background:#cc77ff"></div><span style="color:#dd99ff">Meso Discussion</span>
+    </button>
+    <button class="wtgl on" id="wt-FF" onclick="tw('FF')">
+      <div class="wd" style="background:#00cc44"></div><span style="color:#55ff88">Flash Flood Warn</span>
+    </button>
+    <button class="wtgl on" id="wt-FLD" onclick="tw('FLD')">
+      <div class="wd" style="background:#00e0a0"></div><span style="color:#9affdd">Flood Alerts</span>
+    </button>
+    <button class="wtgl on" id="wt-WS" onclick="tw('WS')">
+      <div class="wd" style="background:#ff69b4"></div><span style="color:#ff99cc">Winter Storm</span>
+    </button>
+    <button class="wtgl on" id="wt-SPS" onclick="tw('SPS')">
+      <div class="wd" style="background:#ffd166"></div><span style="color:#ffe29a">Special Wx Statement</span>
+    </button>
+    <button class="wtgl on" id="wt-SMW" onclick="tw('SMW')">
+      <div class="wd" style="background:#00b4ff"></div><span style="color:#87ddff">Special Marine Warn</span>
+    </button>
+    <button class="wtgl on" id="wt-HEAT" onclick="tw('HEAT')">
+      <div class="wd" style="background:#ff5e5e"></div><span style="color:#ffaaaa">Heat Alerts</span>
+    </button>
+    <button class="wtgl on" id="wt-FIRE" onclick="tw('FIRE')">
+      <div class="wd" style="background:#ff7b00"></div><span style="color:#ffb366">Fire Weather</span>
+    </button>
+    <button class="wtgl on" id="wt-WIND" onclick="tw('WIND')">
+      <div class="wd" style="background:#8fd3ff"></div><span style="color:#d8f1ff">Wind Alerts</span>
+    </button>
+    <button class="wtgl on" id="wt-MAR" onclick="tw('MAR')">
+      <div class="wd" style="background:#4dd0e1"></div><span style="color:#b6f4fb">Marine Alerts</span>
+    </button>
+    <button class="wtgl on" id="wt-GEN" onclick="tw('GEN')">
+      <div class="wd" style="background:#b0bec5"></div><span style="color:#dde6ea">Other NWS Alerts</span>
+    </button>
+  </div>
+
+  <!-- Display — collapsible, open -->
+  <div class="sec collapsible" id="sec-display">
+    <div class="st" onclick="toggleSection('sec-display')">Display</div>
+    <button class="wtgl on" id="wt-HD" onclick="toggleHighDetail()">
+      <div class="wd" style="background:#00d4ff"></div><span style="color:#99eeff">Zoom High-Detail Imagery</span>
+    </button>
+    <div class="row"><label>Radar</label><input type="range" min="20" max="100" value="85" oninput="setOp(0,this.value)"><span class="vl" id="v-rad">85%</span></div>
+    <div class="row"><label>Warnings</label><input type="range" min="10" max="100" value="80" oninput="setOp(1,this.value)"><span class="vl" id="v-wrn">80%</span></div>
+    <div class="row"><label>Labels</label><input type="range" min="0" max="3" step="1" value="1" oninput="setLbl(this.value)"><span class="vl" id="v-lbl">Med</span></div>
+  </div>
+
+  <!-- Loop Playback (always open) -->
+  <div class="sec">
+    <div class="st">Loop Playback</div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;">
+      <button class="cb" id="pbtn" onclick="togglePlay()">▶ Play</button>
+      <button class="cb" onclick="step(-1)">◀</button>
+      <button class="cb" onclick="step(1)">▶</button>
+      <button class="cb" id="fcount-5" onclick="setFrameCount(5)">5</button>
+      <button class="cb" id="fcount-7" onclick="setFrameCount(7)">7</button>
+      <button class="cb" id="fcount-14" onclick="setFrameCount(14)">14</button>
+      <button class="cb" id="fcount-30" onclick="setFrameCount(30)">30</button>
+      <button class="cb on" id="fcount-50" onclick="setFrameCount(50)">50</button>
+    </div>
+    <div class="row" style="margin-top:5px;"><label>Speed</label><input type="range" min="1" max="8" value="3" oninput="setSpd(this.value)"><span class="vl" id="v-spd">3x</span></div>
+    <div style="margin-top:4px;font-family:var(--mono);font-size:8px;color:var(--muted);">
+      Frame <span id="frn" style="color:var(--acc)">LIVE</span> · <span id="frt" style="color:var(--muted)">Current</span>
+    </div>
+  </div>
+
+  <!-- Color Scale -->
+  <div class="sec">
+    <div class="st">Color Scale</div>
+    <canvas id="lgc" height="12"></canvas>
+    <div class="ltks" id="ltks"></div>
+    <div class="lunit" id="lunit">Reflectivity (dBZ)</div>
+  </div>
+
+  <!-- Active Alerts — collapsible, open by default -->
+  <div class="sec collapsible" id="sec-alerts">
+    <div class="st" onclick="toggleSection('sec-alerts')">Active Alerts <span id="acnt" style="color:var(--acc)"></span></div>
+    <div style="font-family:var(--mono);font-size:8px;color:var(--muted);margin-bottom:6px;">Click an alert to zoom to it and switch to the nearest radar station.</div><div style="font-family:var(--mono);font-size:8px;color:var(--muted);margin-bottom:6px;">Click an alert to zoom to it.</div><div id="alist"><div style="font-family:var(--mono);font-size:10px;color:var(--muted);">Loading live data...</div></div>
+  </div>
+</div>
+
+<!-- MAP -->
+<div id="map-wrap">
+  <div id="wxbar">
+    <div class="wxg">
+      <span class="wxt">Mode</span>
+      <span class="wxchip on" id="wxchip-radar" onclick="setLayer('ref');wxChipSel(this,'wxchip-radar')" style="cursor:pointer;">RADAR</span>
+      <span class="wxchip" id="wxchip-model" onclick="msg('Model overlay: connect HRRR/GFS WMS feed to enable.');wxChipSel(this,'wxchip-model')" style="cursor:pointer;">MODEL</span>
+      <span class="wxchip" id="wxchip-spc" onclick="toggleOverlay('outlook');wxChipSel(this,'wxchip-spc')" style="cursor:pointer;">SPC</span>
+    </div>
+    <div class="wxg">
+      <span class="wxt">Radar</span>
+      <span class="wxchip on">KLBB</span>
+      <span class="wxchip on">REF0</span>
+      <span class="wxchip">Live</span>
+    </div>
+    <div class="wxg">
+      <span class="wxt">Overlay</span>
+      <span class="wxchip tor">Tornado</span>
+      <span class="wxchip warn">Day 1</span>
+      <span class="wxchip">HRRR</span>
+    </div>
+    <div class="wxg">
+      <span class="wxt">Region</span>
+      <span class="wxchip on" onclick="resetV()" style="cursor:pointer;">CONUS</span>
+      <span class="wxchip" id="wxchip-hd" onclick="toggleHighDetail();this.classList.toggle('on',highDetailOn)" style="cursor:pointer;">Zoom HD</span>
+    </div>
+  </div>
+
+  <div class="compact-note">Radar-only dark map · NWS sources</div>
+
+  <div id="minitools">
+    <div class="mtbtn on" onclick="miniTool('R')" title="Radar" style="cursor:pointer;">R</div>
+    <div class="mtbtn" onclick="miniTool('S')" title="Satellite" style="cursor:pointer;">S</div>
+    <div class="mtbtn" onclick="miniTool('M')" title="Model" style="cursor:pointer;">M</div>
+    <div class="mtbtn" onclick="miniTool('W')" title="Warnings/Outlook" style="cursor:pointer;">⚠</div>
+  </div>
+
+  <div id="modeldock" style="display:none;"></div>
+
+  <div id="map"></div>
+  <div id="tor-ban">⚠ TORNADO WARNING ACTIVE — TAKE SHELTER NOW ⚠</div>
+  <div id="station-banner">
+    <span id="station-banner-txt">📡 KLBB — Single Site View</span>
+    <button onclick="exitStationView()">✕ Exit Station View</button>
+  </div>
+
+  <!-- WARNING DETAIL CARD (right-click) -->
+  <div id="warn-card">
+    <div id="warn-card-head">
+      <span id="warn-card-title" style="font-size:12px;font-weight:bold;"></span>
+      <button onclick="document.getElementById('warn-card').classList.remove('open')"
+        style="background:transparent;border:none;color:var(--muted);font-size:14px;cursor:pointer;padding:0 4px;">✕</button>
+    </div>
+    <div id="warn-card-body"></div>
+  </div>
+
+  <div id="modebar">
+    <button class="mtab" onclick="resetV();setModeTab(this)">🏠 Home</button>
+    <button class="mtab on" id="mtab-radar" onclick="setLayer('ref');setModeTab(this)">🌀 Radar</button>
+    <button class="mtab dim" id="mtab-sat" class="mtab dim" onclick="setLayer('sat')">🛰 Satellite</button>
+    <button class="mtab dim" id="mode-outlook" onclick="toggleSPCDay(1)">⚠ SPC Day 1</button>
+  </div>
+
+  <div id="sbar">
+    <div style="position:relative;flex:1;">
+      <input id="li" placeholder="Search city or lat,lon..." autocomplete="off" oninput="onSrch()" onkeydown="onKey(event)">
+      <div id="sg"></div>
+    </div>
+    <button id="lbtn" onclick="doSrch()">GO</button>
+  </div>
+
+  <div id="zc">
+    <button class="zb" onclick="map.zoomIn()">+</button>
+    <button class="zb" onclick="map.zoomOut()">−</button>
+    <button class="zb" onclick="resetV()" style="font-size:8px;font-family:var(--mono);">FIT</button>
+  </div>
+
+  <div id="timeline">
+    <button class="tlchip" id="tl-prev" onclick="step(-1)" title="Previous frame" style="cursor:pointer;font-size:13px;">◀</button>
+    <button class="tlchip" id="tl-play" onclick="togglePlay()" title="Play/Stop" style="cursor:pointer;font-size:13px;min-width:36px;">▶</button>
+    <button class="tlchip" id="tl-next" onclick="step(1)" title="Next frame" style="cursor:pointer;font-size:13px;">▶▶</button>
+    <div class="tlbar" id="tl-bar" onclick="tlSeek(event)" style="cursor:pointer;position:relative;">
+      <div id="tl-head" style="position:absolute;top:-3px;width:10px;height:10px;border-radius:50%;background:#51b8ff;transform:translateX(-50%);left:100%;transition:left .3s;"></div>
+    </div>
+    <span class="tlchip on" id="tl-time" style="min-width:58px;text-align:center;">LIVE</span>
+    <span class="tlchip" id="tl-stn" style="color:#86aaca;">CONUS</span>
+    <select id="tl-spd" onchange="setSpd(this.value)" style="background:rgba(17,26,40,.96);border:1px solid rgba(78,111,150,.78);border-radius:999px;color:#d7ebfa;font-family:var(--mono);font-size:10px;padding:5px 8px;cursor:pointer;outline:none;">
+      <option value="1">1×</option>
+      <option value="2">2×</option>
+      <option value="3" selected>3×</option>
+      <option value="5">5×</option>
+      <option value="8">8×</option>
+    </select>
+  </div>
+
+  <div id="sb">
+    <div class="sp" id="sp2"></div>
+    <span id="smsg">Initializing live radar...</span>
+  </div>
+
+  <div id="wb-panel">
+    <div id="wb-head">
+      <span>RRFS-A Composite Reflectivity</span>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <a href="https://maps.weatherbell.com/view/model/rrfs_a?d=scentus&p=refc" target="_blank" rel="noopener noreferrer" style="color:var(--acc);text-decoration:none;font-family:var(--mono);font-size:10px;">Open full</a>
+        <button id="wb-close" onclick="toggleWB(false)">✕</button>
+      </div>
+    </div>
+    <iframe id="wb-frame" src="https://maps.weatherbell.com/view/model/rrfs_a?d=scentus&p=refc" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+    <div id="wb-fallback">
+      <div style="font-size:15px;font-weight:700;margin-bottom:8px;color:var(--txt);">WeatherBell panel could not load here</div>
+      <div style="font-size:12px;line-height:1.5;color:#9db7cb;max-width:320px;text-align:center;">WeatherBell sometimes blocks iframe embedding or requires an active WeatherBell session in a separate tab.</div>
+      <a id="wb-open" href="https://maps.weatherbell.com/view/model/rrfs_a?d=scentus&p=refc" target="_blank" rel="noopener noreferrer">Open WeatherBell</a>
+    </div>
+  </div>
+</div>
+
+<!-- RIGHT PANEL -->
+<div id="right">
+<div class="sec">
+    <div class="st">Location / Forecast</div>
+    <div style="font-family:var(--mono);font-size:10px;color:var(--acc);margin-top:2px;" id="rll">Click city or map</div>
+    <div style="font-family:var(--cond);font-size:11px;color:var(--muted);margin-top:3px;" id="rmode">Click a city label for NWS forecast</div>
+    <div id="city-fc" style="margin-top:6px;font-family:var(--mono);font-size:10px;color:var(--muted);">
+      Click any city or NEXRAD dot on the map.
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="st">Refresh</div>
+    <div style="display:flex;gap:5px;">
+      <button class="cb on" id="auto-btn" onclick="toggleAuto()" style="font-size:11px;">AUTO</button>
+      <button class="cb" onclick="fetchAll()" style="font-size:11px;">↺ Now</button>
+    </div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:5px;">Auto refresh every 2 min · replay supports 5 / 7 / 14 / 30 / 50 frames</div>
+  </div>
+
+  <div class="sec">
+    <div class="st">Quick Analysis</div>
+    <div class="mdgrid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:2px;">
+      <div class="mdcell" style="padding:10px;border-radius:10px;border:1px solid rgba(78,111,150,.78);background:rgba(17,26,40,.96);">
+        <div class="mdlabel" style="font-family:var(--mono);font-size:9px;color:#7fa5c3;text-transform:uppercase;letter-spacing:1px;">Radar Site</div>
+        <div class="mdval" style="font-family:var(--mono);font-size:14px;color:#e8f6ff;margin-top:5px;" id="qa-stn">CONUS</div>
+      </div>
+      <div class="mdcell" style="padding:10px;border-radius:10px;border:1px solid rgba(78,111,150,.78);background:rgba(17,26,40,.96);">
+        <div class="mdlabel" style="font-family:var(--mono);font-size:9px;color:#7fa5c3;text-transform:uppercase;letter-spacing:1px;">Product</div>
+        <div class="mdval" style="font-family:var(--mono);font-size:14px;color:#e8f6ff;margin-top:5px;" id="qa-prod">N0Q REF</div>
+      </div>
+      <div class="mdcell" style="padding:10px;border-radius:10px;border:1px solid rgba(78,111,150,.78);background:rgba(17,26,40,.96);">
+        <div class="mdlabel" style="font-family:var(--mono);font-size:9px;color:#7fa5c3;text-transform:uppercase;letter-spacing:1px;">Outlook</div>
+        <div class="mdval" style="font-family:var(--mono);font-size:13px;color:#3a5870;margin-top:5px;" id="qa-ovl">Off</div>
+      </div>
+      <div class="mdcell" style="padding:10px;border-radius:10px;border:1px solid rgba(78,111,150,.78);background:rgba(17,26,40,.96);">
+        <div class="mdlabel" style="font-family:var(--mono);font-size:9px;color:#7fa5c3;text-transform:uppercase;letter-spacing:1px;">Model</div>
+        <div class="mdval" style="font-family:var(--mono);font-size:14px;color:#3a5870;margin-top:5px;" id="qa-mdl">Off</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="st">Data Sources</div>
+    <div style="font-family:var(--mono);font-size:9px;line-height:2.2;color:var(--muted);">
+      Radar: <span style="color:var(--txt)">RainViewer + IEM NEXRAD ridge</span><br>
+      Warns: <span style="color:var(--txt)">api.weather.gov</span><br>
+      Outlook: <span style="color:var(--txt)">SPC GeoJSON Day 1/2/3</span><br>
+      Model: <span style="color:var(--txt)">Iowa State HRRR REFD + RRFS-A</span>
+    </div>
+  </div>
+</div>
+
+</div><!-- #wrap -->
+
+<div id="bot">
+  <span>StormView Safe Restore</span><span class="bs">|</span>
+  <span id="blyr">Reflectivity (dBZ)</span><span class="bs">|</span>
+  <span id="bco">--</span><span class="bs">|</span>
+  Zoom <span id="bzm">5</span>
+  <span style="margin-left:auto;color:var(--muted);">Educational — not for safety decisions</span>
+</div>
+
+<script>
+'use strict';
+// ═══════════════════════════
+// LAYER DEFINITIONS
+// ═══════════════════════════
+const LAYERS = {
+  ref:{ label:'Reflectivity', unit:'dBZ',
+        stops:[-30,-10,0,5,10,15,20,25,30,35,40,45,50,55,60,65,70],
+        cols:['#646464','#646464','#04e9e7','#019ff4','#0300f4','#02fd02','#01c501','#008e00','#fdf802','#e5bc00','#fd9500','#fd0000','#d40000','#bc0000','#f800fd','#9854c6','#ffffff']},
+  vel:{ label:'Velocity', unit:'kt',
+        stops:[-64,-50,-36,-26,-16,-8,0,8,16,26,36,50,64],
+        cols:['#646464','#00ecec','#009acd','#004d9a','#006400','#00b400','#777','#ff4500','#b40000','#640000','#ff00ff','#ff96ff','#ffffff']},
+  sat:{ label:'Satellite IR', unit:'BT°C',
+        stops:[-80,-60,-40,-20,0,20],
+        cols:['#ffffff','#ddddff','#aaaaff','#6666cc','#333388','#000022']},
+};
+
+// Warning polygon styles — full expanded set
+const WCFG = {
+  TOR:{ c:'#ff2020', f:'#ff2020', fa:0.22, w:3, d:'',    z:500, lbl:'TORNADO WARNING' },
+  SVR:{ c:'#ff8800', f:'#ff8800', fa:0.13, w:2, d:'6,4', z:400, lbl:'SVR T-STORM WARN' },
+  SPS:{ c:'#ffd166', f:'#ffd166', fa:0.12, w:2, d:'3,3', z:395, lbl:'SPECIAL WEATHER STATEMENT' },
+  SMW:{ c:'#00b4ff', f:'#00b4ff', fa:0.13, w:2, d:'4,3', z:390, lbl:'SPECIAL MARINE WARNING' },
+  TWA:{ c:'#ffff00', f:'#ffff00', fa:0.09, w:2, d:'8,5', z:300, lbl:'TORNADO WATCH' },
+  SWA:{ c:'#dbdb00', f:'#dbdb00', fa:0.07, w:2, d:'8,5', z:300, lbl:'SVR T-STORM WATCH' },
+  MCD:{ c:'#cc77ff', f:'#cc77ff', fa:0.09, w:2, d:'4,4', z:350, lbl:'MESO DISCUSSION' },
+  FF: { c:'#00cc44', f:'#00cc44', fa:0.11, w:2, d:'5,5', z:380, lbl:'FLASH FLOOD WARN' },
+  FLD:{ c:'#00e0a0', f:'#00e0a0', fa:0.10, w:2, d:'5,4', z:360, lbl:'FLOOD ALERT' },
+  WS: { c:'#ff69b4', f:'#ff69b4', fa:0.09, w:2, d:'4,6', z:280, lbl:'WINTER WEATHER' },
+  HEAT:{ c:'#ff5e5e', f:'#ff5e5e', fa:0.09, w:2, d:'2,4', z:275, lbl:'HEAT ALERT' },
+  FIRE:{ c:'#ff7b00', f:'#ff7b00', fa:0.09, w:2, d:'6,3', z:275, lbl:'FIRE WEATHER' },
+  WIND:{ c:'#8fd3ff', f:'#8fd3ff', fa:0.08, w:2, d:'5,3', z:275, lbl:'WIND ALERT' },
+  MAR:{ c:'#4dd0e1', f:'#4dd0e1', fa:0.08, w:2, d:'5,3', z:275, lbl:'MARINE ALERT' },
+  GEN:{ c:'#b0bec5', f:'#b0bec5', fa:0.08, w:2, d:'3,4', z:250, lbl:'NWS ALERT' },
+};
+
+// NWS event string → warning type (full classifier)
+function classifyNwsEvent(ev=''){
+  const e=String(ev||'').trim();
+  if(e==='Tornado Warning') return 'TOR';
+  if(e==='Severe Thunderstorm Warning') return 'SVR';
+  if(e==='Special Weather Statement') return 'SPS';
+  if(e==='Special Marine Warning') return 'SMW';
+  if(e==='Tornado Watch') return 'TWA';
+  if(e==='Severe Thunderstorm Watch') return 'SWA';
+  if(e==='Flash Flood Warning'||e==='Flash Flood Watch') return 'FF';
+  if(/Flood/i.test(e)) return 'FLD';
+  if(/Winter|Blizzard|Ice Storm|Snow Squall/i.test(e)) return 'WS';
+  if(/Heat|Excessive Heat/i.test(e)) return 'HEAT';
+  if(/Red Flag|Fire Weather/i.test(e)) return 'FIRE';
+  if(/Wind|Dust Storm/i.test(e)) return 'WIND';
+  if(/Marine|Gale|Storm Warning|Hurricane Force Wind/i.test(e)) return 'MAR';
+  return 'GEN';
+}
+// Legacy alias used in some paths
+const EMAP={
+  'Tornado Warning':'TOR','Severe Thunderstorm Warning':'SVR',
+  'Tornado Watch':'TWA','Severe Thunderstorm Watch':'SWA',
+  'Flash Flood Warning':'FF','Flash Flood Watch':'FF',
+  'Winter Storm Warning':'WS','Winter Storm Watch':'WS',
+  'Blizzard Warning':'WS','Ice Storm Warning':'WS',
+};
+
+// ═══════════════════════════
+// STATE
+// ═══════════════════════════
+let map, curLayer='ref';
+let radOp=0.85, wrnOp=0.80, lblMode=1;
+let rvFrames=[], radLayers={}, fIdx=0, rvHost='';
+let playing=false, spd=3, lastTs=0;
+let frameCount=50;
+let autoOn=true;
+let wrnVis={TOR:true,SVR:true,SPS:true,SMW:true,TWA:true,SWA:true,MCD:true,FF:true,FLD:true,WS:true,HEAT:true,FIRE:true,WIND:true,MAR:true,GEN:true};
+let wrnLyrs={}, alerts=[], alertFeatures=[];
+let alertCenters={};
+let cityGrp=null, pinMkr=null;
+let baseDarkLayer=null, baseImageryLayer=null, baseLabelsLayer=null;
+let highDetailOn=true;
+let wbOpen=false;
+let hrrrLayer=null, hrrrOn=false;
+let rrfsLayer=null, rrfsOn=false;
+let activeStation=null;
+
+// ── COLLAPSIBLE SECTIONS ──
+function toggleSection(id){
+  const el=document.getElementById(id);
+  if(el) el.classList.toggle('collapsed');
+}
+
+function setFrameCount(n){
+  frameCount = n;
+  document.querySelectorAll('[id^="fcount-"]').forEach(b=>b.classList.remove('on'));
+  const btn=document.getElementById('fcount-'+n);
+  if(btn) btn.classList.add('on');
+  loadRadar().catch(()=>{});
+  msg('Replay set to ' + n + ' frames');
+}
+
+// ── STATION HELPERS ──
+function normalizeStationId(stn){
+  if(!stn) return null;
+  stn=String(stn).trim().toUpperCase();
+  if(!stn.startsWith('K')) stn='K'+stn;
+  return stn;
+}
+function stationCodeForIEM(stn){
+  stn=normalizeStationId(stn);
+  return stn ? stn.slice(1) : null; // strip leading K → e.g. KLBB → LBB
+}
+
+function toggleWB(force){
+  wbOpen = typeof force === 'boolean' ? force : !wbOpen;
+  const panel=document.getElementById('wb-panel');
+  const btn=document.getElementById('wb-toggle');
+  panel.classList.toggle('open', wbOpen);
+  btn.classList.toggle('on', wbOpen);
+  btn.textContent = wbOpen ? 'HIDE RRFS-A PANEL' : 'RRFS-A REFLECTIVITY';
+}
+
+function initWBPanel(){
+  const frame=document.getElementById('wb-frame');
+  const fallback=document.getElementById('wb-fallback');
+  if(!frame || !fallback) return;
+
+  const showFallback=()=>{
+    fallback.style.display='flex';
+    frame.style.display='none';
+  };
+  const hideFallback=()=>{
+    fallback.style.display='none';
+    frame.style.display='block';
+  };
+
+  hideFallback();
+  const timer=setTimeout(showFallback, 5000);
+  frame.addEventListener('load', ()=>{ clearTimeout(timer); hideFallback(); });
+  frame.addEventListener('error', ()=>{ clearTimeout(timer); showFallback(); });
+}
+
+let overlayVis={county:true,state:true,cwa:true,outlook:true};
+let countyOverlay=null, stateOverlay=null, cwaOverlay=null, outlookOverlay=null;
+
+// ═══════════════════════════
+// CLOCK
+// ═══════════════════════════
+setInterval(()=>{
+  const n=new Date();
+  document.getElementById('utc').textContent=
+    p2(n.getUTCHours())+':'+p2(n.getUTCMinutes())+':'+p2(n.getUTCSeconds())+'Z';
+},1000);
+function p2(n){return String(n).padStart(2,'0');}
+
+function zoomToAlertByKey(key){
+  if(!map || !key) return;
+  const layer = wrnLyrs[key];
+  const labelLayer = wrnLyrs[key + '_lbl'];
+  const center = alertCenters[key];
+
+  try{
+    if(layer && typeof layer.getLatLng === 'function'){
+      const ll = layer.getLatLng();
+      map.flyTo(ll, Math.max(map.getZoom(), 8), {duration:1.0});
+      if(layer.openPopup) layer.openPopup();
+      const rid = switchToNearestRadar(ll.lat, ll.lng);
+      msg(rid ? ('Zoomed to alert · nearest radar ' + rid) : 'Zoomed to alert');
+      return;
+    }
+    if(labelLayer && typeof labelLayer.getLatLng === 'function'){
+      const ll = labelLayer.getLatLng();
+      map.flyTo(ll, Math.max(map.getZoom(), 8), {duration:1.0});
+      if(layer && layer.openPopup) layer.openPopup();
+      const rid = switchToNearestRadar(ll.lat, ll.lng);
+      msg(rid ? ('Zoomed to alert · nearest radar ' + rid) : 'Zoomed to alert');
+      return;
+    }
+    if(layer && typeof layer.getBounds === 'function'){
+      const b = layer.getBounds();
+      if(b && b.isValid && b.isValid()){
+        const c = b.getCenter();
+        map.flyToBounds(b.pad(0.25), {duration:1.0, maxZoom:9});
+        if(layer.openPopup) layer.openPopup();
+        const rid = switchToNearestRadar(c.lat, c.lng);
+        msg(rid ? ('Zoomed to alert · nearest radar ' + rid) : 'Zoomed to alert');
+        return;
+      }
+    }
+    if(center){
+      const ll = Array.isArray(center) ? L.latLng(center[0], center[1]) : center;
+      map.flyTo(ll, Math.max(map.getZoom(), 8), {duration:1.0});
+      if(layer && layer.openPopup) layer.openPopup();
+      const rid = switchToNearestRadar(ll.lat, ll.lng);
+      msg(rid ? ('Zoomed to alert · nearest radar ' + rid) : 'Zoomed to alert');
+    }
+  }catch(e){
+    console.warn('zoomToAlertByKey failed', e);
+  }
+}
+
+// ═══════════════════════════
+// STATUS
+// ═══════════════════════════
+function msg(s){
+  const sb=document.getElementById('sb');
+  sb.style.opacity='1';
+  document.getElementById('smsg').textContent=s;
+}
+function spin(on){
+  ['hsp','sp2'].forEach(id=>document.getElementById(id).style.display=on?'block':'none');
+}
+
+// ═══════════════════════════
+// MAP INIT
+// ═══════════════════════════
+function initMap(){
+  initWBPanel();
+  map=L.map('map',{center:[38,-96],zoom:5,zoomControl:false,attributionControl:false,preferCanvas:true,maxZoom:12,minZoom:3});
+
+  map.createPane('baseLabels');
+  map.getPane('baseLabels').style.zIndex=350;
+  map.getPane('baseLabels').style.pointerEvents='none';
+  map.createPane('boundaries');
+  map.getPane('boundaries').style.zIndex=360;
+  map.getPane('boundaries').style.pointerEvents='none';
+  map.createPane('outlook');
+  map.getPane('outlook').style.zIndex=390;
+  map.getPane('outlook').style.pointerEvents='none';
+
+  // Dark radar-first base only
+  baseDarkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+    maxZoom:18,subdomains:'abcd'
+  }).addTo(map);
+
+  // Keep these defined so the rest of the code doesn't break, but don't use them.
+  baseImageryLayer = null;
+  baseLabelsLayer = null;
+
+  setupReferenceOverlays();
+
+  L.control.scale({imperial:true,metric:false,position:'bottomleft'}).addTo(map);
+
+  map.on('zoom',()=>{
+    const z=map.getZoom();
+    document.getElementById('zbadge').textContent='Zoom '+z;
+    document.getElementById('bzm').textContent=z;
+    rebuildCities();
+    updateZoomImagery();
+    buildNexradDots();
+  });
+  map.on('mousemove',e=>{
+    const la=Math.abs(e.latlng.lat).toFixed(3)+(e.latlng.lat>=0?'°N':'°S');
+    const lo=Math.abs(e.latlng.lng).toFixed(3)+(e.latlng.lng<=0?'°W':'°E');
+    document.getElementById('rll').textContent=la+' / '+lo;
+    document.getElementById('bco').textContent=la+' '+lo;
+  });
+  map.on('click',e=>{
+    const lat=e.latlng.lat, lon=e.latlng.lng;
+    const lbl=Math.abs(lat).toFixed(3)+'°,'+Math.abs(lon).toFixed(3)+'°';
+    dropPin(lat,lon,lbl);
+    // Fetch NWS forecast for clicked point
+    showCityPanel({n:lbl,lat,lon,p:1});
+  });
+
+  updateZoomImagery();
+  fetchAll();
+  setInterval(()=>{ if(autoOn) fetchAll(); },120000);
+}
+
+
+function setupReferenceOverlays(){
+  const refBase='https://mapservices.weather.noaa.gov/static/services/nws_reference_maps/nws_reference_map/MapServer/WMSServer';
+  countyOverlay=L.tileLayer.wms(refBase,{
+    layers:'2',format:'image/png',transparent:true,opacity:0.42,version:'1.3.0',pane:'boundaries'
+  }).addTo(map);
+  stateOverlay=L.tileLayer.wms(refBase,{
+    layers:'3',format:'image/png',transparent:true,opacity:0.72,version:'1.3.0',pane:'boundaries'
+  }).addTo(map);
+  cwaOverlay=L.tileLayer.wms(refBase,{
+    layers:'1',format:'image/png',transparent:true,opacity:0.55,version:'1.3.0',pane:'boundaries'
+  }).addTo(map);
+  // SPC outlook is now loaded as GeoJSON via loadSPCOutlook()
+}
+
+// ═══════════════════════════
+// SPC OUTLOOKS — Day 1/2/3
+// ═══════════════════════════
+// SPC uses numeric DN field: 2=TSTM,3=MRGL,4=SLGT,5=ENH,6=MDT,8=HIGH
+// Day 2/3 use: 2=TSTM,3=SLGT,4=ENH,5=MDT,6=HIGH + 10=30%,15=45% (probabilistic)
+const SPC_COLORS={
+  // Categorical (Day 1 DN values)
+  2:{fill:'#c1e9c1',stroke:'#5f9f5f',label:'Gen. Thunder (TSTM)'},
+  3:{fill:'#66c266',stroke:'#336633',label:'Marginal (MRGL)'},
+  4:{fill:'#f6f67a',stroke:'#a0a000',label:'Slight (SLGT)'},
+  5:{fill:'#e6a033',stroke:'#a06010',label:'Enhanced (ENH)'},
+  6:{fill:'#e63333',stroke:'#800000',label:'Moderate (MDT)'},
+  8:{fill:'#ff00ff',stroke:'#800080',label:'High'},
+  // Day 2/3 probabilistic
+  10:{fill:'#f6f67a',stroke:'#a0a000',label:'10% Wind/Hail'},
+  15:{fill:'#e6a033',stroke:'#a06010',label:'15% Wind/Hail'},
+  30:{fill:'#e63333',stroke:'#800000',label:'30%'},
+  45:{fill:'#ff00ff',stroke:'#800080',label:'45%'},
+  // Text labels fallback
+  'TSTM':{fill:'#c1e9c1',stroke:'#5f9f5f',label:'Gen. Thunder'},
+  'MRGL':{fill:'#66c266',stroke:'#336633',label:'Marginal'},
+  'SLGT':{fill:'#f6f67a',stroke:'#a0a000',label:'Slight'},
+  'ENH':{fill:'#e6a033',stroke:'#a06010',label:'Enhanced'},
+  'MDT':{fill:'#e63333',stroke:'#800000',label:'Moderate'},
+  'HIGH':{fill:'#ff00ff',stroke:'#800080',label:'High'},
+};
+
+let spcLayers={1:null,2:null,3:null};
+let spcOn={1:false,2:false,3:false};
+let spcHighlight=null; // pulsing outline layer
+
+const SPC_URLS={
+  1:{cat:'https://www.spc.noaa.gov/products/outlook/day1otlk_cat.nolyr.geojson',label:'Day 1'},
+  2:{cat:'https://www.spc.noaa.gov/products/outlook/day2otlk_cat.nolyr.geojson',label:'Day 2'},
+  3:{cat:'https://www.spc.noaa.gov/products/outlook/day3otlk_cat.nolyr.geojson',label:'Day 3'},
+};
+
+function getSPCColor(props){
+  // Try numeric DN first
+  const dn=props.DN!==undefined?Number(props.DN):null;
+  if(dn!==null && SPC_COLORS[dn]) return SPC_COLORS[dn];
+  // Try text label
+  const lbl=(props.LABEL||props.label||props.TITLE||'').trim().toUpperCase();
+  if(SPC_COLORS[lbl]) return SPC_COLORS[lbl];
+  // Fallback
+  return {fill:'#888888',stroke:'#555555',label:lbl||'Unknown'};
+}
+
+async function loadSPCDay(day){
+  const dayKey=Number(day);
+  if(spcLayers[dayKey]){try{map.removeLayer(spcLayers[dayKey]);}catch(e){}spcLayers[dayKey]=null;}
+  const info=SPC_URLS[dayKey];
+  if(!info) return;
+  document.getElementById('spc-status').textContent=`Loading SPC ${info.label}...`;
+  try{
+    const res=await fetch(info.cat,{signal:AbortSignal.timeout(12000)});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const d=await res.json();
+    if(!d.features||d.features.length===0) throw new Error('No outlook data');
+    spcLayers[dayKey]=L.geoJSON(d,{
+      pane:'outlook',
+      style(feat){
+        const cfg=getSPCColor(feat.properties);
+        const opacity=dayKey===1?0.38:dayKey===2?0.28:0.20;
+        const dashArr=dayKey===1?'none':dayKey===2?'6,4':'4,6';
+        return{fillColor:cfg.fill,fillOpacity:opacity,color:cfg.stroke,weight:dayKey===1?1.8:1.2,dashArray:dashArr};
+      },
+      onEachFeature(feat,layer){
+        const cfg=getSPCColor(feat.properties);
+        layer.bindTooltip(`<b>SPC ${info.label}</b> — ${cfg.label}`,{sticky:true,opacity:0.95});
+        // Click highlight
+        layer.on('click',()=>highlightOutlook(layer,cfg,info.label,dayKey));
+      }
+    });
+    if(overlayVis.outlook||spcOn[dayKey]) spcLayers[dayKey].addTo(map);
+    document.getElementById('spc-status').textContent=`SPC ${info.label} loaded ✓`;
+    // Sync both button sets
+    ['ov-d','ovbtn-d'].forEach(prefix=>{
+      const btn=document.getElementById(prefix+dayKey);
+      if(btn) btn.classList.toggle('on',spcOn[dayKey]);
+    });
+    updateQuickAnalysis();
+  }catch(e){
+    document.getElementById('spc-status').textContent=`SPC ${info.label} unavailable (CORS)`;
+    console.warn('SPC Day '+day,e.message);
+  }
+}
+
+function highlightOutlook(layer,cfg,dayLabel,dayNum){
+  // Remove old highlight
+  if(spcHighlight){try{map.removeLayer(spcHighlight);}catch(e){}spcHighlight=null;}
+  // Create glowing duplicate
+  const geojson=layer.toGeoJSON();
+  spcHighlight=L.geoJSON(geojson,{
+    pane:'outlook',
+    style:{fillColor:'transparent',fillOpacity:0,color:cfg.stroke,weight:4,opacity:1,className:'spc-highlight-pulse'}
+  }).addTo(map);
+  // Auto-remove after 4s
+  setTimeout(()=>{if(spcHighlight){try{map.removeLayer(spcHighlight);}catch(e){}spcHighlight=null;}},4000);
+  msg(`SPC ${dayLabel} — ${cfg.label} (highlighted)`);
+}
+
+async function toggleSPCDay(day){
+  const dayKey=Number(day);
+  spcOn[dayKey]=!spcOn[dayKey];
+  // Sync ALL buttons for this day
+  ['ov-d','ovbtn-d'].forEach(prefix=>{
+    const btn=document.getElementById(prefix+day);
+    if(btn) btn.classList.toggle('on',spcOn[dayKey]);
+  });
+  if(spcOn[dayKey]){
+    if(!spcLayers[dayKey]) await loadSPCDay(dayKey);
+    else if(!map.hasLayer(spcLayers[dayKey])) spcLayers[dayKey].addTo(map);
+    msg('SPC Day '+day+' outlook on');
+  } else {
+    if(spcLayers[dayKey] && map.hasLayer(spcLayers[dayKey])) map.removeLayer(spcLayers[dayKey]);
+    msg('SPC Day '+day+' outlook off');
+  }
+  updateQuickAnalysis();
+}
+
+// Keep old name for backward compat with fetchAll
+async function loadSPCOutlook(){
+  await loadSPCDay(1);
+}
+
+// ═══════════════════════════
+// RRFS-A OVERLAY
+// ═══════════════════════════
+
+function syncOverlayVisibility(){
+  const pairs=[
+    ['county', countyOverlay],
+    ['state', stateOverlay],
+    ['cwa', cwaOverlay],
+  ];
+  pairs.forEach(([key,layer])=>{
+    if(!layer) return;
+    if(overlayVis[key]){ if(!map.hasLayer(layer)) layer.addTo(map); }
+    else{ if(map.hasLayer(layer)) map.removeLayer(layer); }
+  });
+  // SPC outlooks
+  [1,2,3].forEach(day=>{
+    const layer=spcLayers[day];
+    if(!layer) return;
+    if(spcOn[day]){ if(!map.hasLayer(layer)) layer.addTo(map); }
+    else{ if(map.hasLayer(layer)) map.removeLayer(layer); }
+  });
+}
+
+function toggleOverlay(name){
+  overlayVis[name]=!overlayVis[name];
+
+  const sideBtn=document.getElementById('ov-'+name);
+  if(sideBtn) sideBtn.classList.toggle('on',overlayVis[name]);
+
+  if(name==='outlook'){
+    const topBtn=document.getElementById('mode-outlook');
+    if(topBtn){
+      topBtn.classList.toggle('on', overlayVis[name]);
+      topBtn.classList.toggle('dim', !overlayVis[name]);
+    }
+  }
+
+  syncOverlayVisibility();
+  msg(name.charAt(0).toUpperCase()+name.slice(1)+' overlay '+(overlayVis[name]?'on':'off'));
+}
+
+// ═══════════════════════════
+// ZOOM-BASED HIGH DETAIL IMAGERY
+// ═══════════════════════════
+function updateZoomImagery(){
+  if(!map || !baseDarkLayer) return;
+
+  if(!map.hasLayer(baseDarkLayer)) baseDarkLayer.addTo(map);
+
+  // Radar-only mode: no white/blue imagery backgrounds.
+  if(baseImageryLayer && map.hasLayer(baseImageryLayer)) map.removeLayer(baseImageryLayer);
+
+  const wx=document.getElementById('wxchip-hd');
+  if(wx) wx.classList.remove('on');
+  const hd=document.getElementById('wt-HD');
+  if(hd) hd.classList.remove('on');
+
+  const rmode=document.getElementById('rmode');
+  if(rmode) rmode.textContent = 'Radar Only';
+}
+
+function toggleHighDetail(){
+  highDetailOn = !highDetailOn;
+  document.getElementById('wt-HD').classList.toggle('on', highDetailOn);
+  const hdc=document.getElementById('wxchip-hd');
+  if(hdc) hdc.classList.toggle('on', highDetailOn);
+  updateZoomImagery();
+}
+
+// ═══════════════════════════
+// FETCH ALL
+// ═══════════════════════════
+async function fetchAll(){
+  spin(true);
+  msg('Fetching live radar...');
+  try{ await loadRadar(); }catch(e){ msg('Radar error: '+e.message); console.error(e); }
+  msg('Fetching NWS warnings...');
+  try{ await loadWarnings(); }catch(e){ msg('Warnings error: '+e.message); console.error(e); }
+  msg('Fetching SPC products...');
+  try{ await loadSPC(); }catch(e){ msg('SPC error (may be CORS): '+e.message); }
+  msg('Fetching SPC outlook...');
+  try{ await loadSPCDay(1); }catch(e){ msg('SPC Day 1 unavailable'); }
+  // Days 2+3 load in background (don't block)
+  loadSPCDay(2).catch(()=>{});
+  loadSPCDay(3).catch(()=>{});
+  syncOverlayVisibility();
+  spin(false);
+  const n=new Date();
+  const ts=p2(n.getUTCHours())+':'+p2(n.getUTCMinutes())+'Z';
+  document.getElementById('upd').textContent='Updated '+ts;
+  msg('Live · '+ts+' · '+alerts.length+' alerts active');
+  setTimeout(()=>document.getElementById('sb').style.opacity='0.4',5000);
+}
+
+// ═══════════════════════════
+// RADAR — RainViewer
+// ═══════════════════════════
+async function loadRadar(){
+  const res=await fetch('https://api.rainviewer.com/public/weather-maps.json');
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  const data=await res.json();
+  rvHost=data.host;
+  rvFrames=(data.radar && data.radar.past ? data.radar.past.slice(-frameCount) : []);
+  buildRadarLayers();
+}
+
+function buildRadarLayers(){
+  const wasPlaying=playing;
+  if(wasPlaying) playing=false;
+
+  Object.values(radLayers).forEach(l=>{ try{map.removeLayer(l);}catch(e){} });
+  radLayers={};
+
+  if(curLayer==='sat') return;
+
+  // ── SINGLE-STATION MODE ──
+  if(activeStation){
+    const code=stationCodeForIEM(activeStation); // strips K → e.g. KLBB→LBB
+    const url=`https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/ridge::${code}-N0Q-0/{z}/{x}/{y}.png`;
+    const layer=L.tileLayer(url,{
+      opacity:radOp, tileSize:256, zIndex:200,
+      maxZoom:12, maxNativeZoom:10,
+      crossOrigin:true, updateWhenZooming:false, keepBuffer:2,
+      errorTileUrl:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+    }).addTo(map);
+    radLayers[0]=layer;
+    fIdx=0;
+    const tl=document.getElementById('tl-time'); if(tl){tl.textContent='Latest';tl.classList.add('on');}
+    const ts=document.getElementById('tl-stn'); if(ts) ts.textContent=activeStation;
+    const pb=document.getElementById('tl-play'); if(pb){pb.textContent='▶';pb.classList.remove('on');}
+    const sb=document.getElementById('pbtn'); if(sb){sb.textContent='▶ Play';sb.classList.remove('on');}
+    document.getElementById('frn').textContent=activeStation;
+    document.getElementById('frt').textContent='Latest';
+    msg(activeStation+' latest radar loaded · replay paused in station mode');
+    updateTimelineBar(); updateQuickAnalysis();
+    return;
+  }
+
+  // ── CONUS COMPOSITE MODE — RainViewer replay ──
+  if(rvFrames.length>0 && rvHost){
+    rvFrames.forEach((frame,i)=>{
+      const url=`${rvHost}${frame.path}/256/{z}/{x}/{y}/6/1_1.png`;
+      const layer=L.tileLayer(url,{
+        opacity:i===rvFrames.length-1?radOp:0,
+        tileSize:256, zIndex:200, maxZoom:12, maxNativeZoom:10,
+        crossOrigin:true, updateWhenZooming:false, keepBuffer:2
+      }).addTo(map);
+      radLayers[i]=layer;
+    });
+    fIdx=rvFrames.length-1;
+    showFrame(fIdx);
+  } else {
+    // Fallback — IEM CONUS live
+    radLayers[0]=L.tileLayer(
+      'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png',
+      {opacity:radOp,tileSize:256,zIndex:200,maxZoom:12,maxNativeZoom:10,crossOrigin:true,keepBuffer:2}
+    ).addTo(map);
+    fIdx=0;
+  }
+
+  const tl=document.getElementById('tl-time'); if(tl){tl.textContent='LIVE';tl.classList.add('on');}
+  const ts=document.getElementById('tl-stn'); if(ts) ts.textContent='CONUS';
+  document.getElementById('frn').textContent='LIVE';
+  document.getElementById('frt').textContent='Current';
+  msg('CONUS radar · '+rvFrames.length+' frames');
+  updateTimelineBar(); updateQuickAnalysis();
+
+  if(wasPlaying && rvFrames.length>1){
+    playing=true; lastTs=performance.now(); requestAnimationFrame(animLoop);
+  }
+}
+
+function showFrame(i){
+  const numFrames=rvFrames.length;
+  if(numFrames===0){ return; }
+  i=Math.max(0,Math.min(i,numFrames-1));
+
+  // Hide all RainViewer frame layers, show only the selected one
+  for(let j=0;j<numFrames;j++){
+    if(radLayers[j]) radLayers[j].setOpacity(j===i?radOp:0);
+  }
+  // IEM single-station overlay follows live frame
+  if(radLayers['iem']){
+    radLayers['iem'].setOpacity(i===numFrames-1?radOp:0);
+  }
+
+  fIdx=i;
+  const isLive=(i===numFrames-1);
+  document.getElementById('frn').textContent=isLive?'LIVE':i+1;
+
+  const tc=document.getElementById('tl-time');
+  if(rvFrames[i]){
+    const d=new Date(rvFrames[i].time*1000);
+    const ts=p2(d.getUTCHours())+':'+p2(d.getUTCMinutes())+'Z';
+    if(tc){tc.textContent=isLive?'LIVE':ts; tc.classList.toggle('on',isLive);}
+    document.getElementById('frt').textContent=ts;
+  } else {
+    if(tc){tc.textContent='LIVE';tc.classList.add('on');}
+  }
+  updateTimelineBar();
+}
+
+// ═══════════════════════════
+// NWS WARNINGS
+// ═══════════════════════════
+async function loadWarnings(){
+  Object.entries(wrnLyrs).forEach(([k,l])=>{
+    if(!k.startsWith('spc')){try{map.removeLayer(l);}catch(e){} delete wrnLyrs[k];}
+  });
+  alerts=alerts.filter(a=>a.src==='spc');
+
+  const res=await fetch('https://api.weather.gov/alerts/active?status=actual&message_type=alert,update',{
+    headers:{'User-Agent':'StormView/1.0','Accept':'application/geo+json'},
+    signal:AbortSignal.timeout(15000)
+  });
+  if(!res.ok) throw new Error('NWS API HTTP '+res.status);
+  const data=await res.json();
+
+  let tor=0;
+  (data.features||[]).forEach((f,i)=>{
+    const props=f.properties||{};
+    const ev=(props.event||'').trim();
+    const wt=classifyNwsEvent(ev);
+    if(!f.geometry) return;
+    const area=props.areaDesc||'';
+    const exp=props.expires||'';
+    alerts.push({type:wt,event:ev,area,exp,src:'nws',feat:f});
+    if(wt==='TOR') tor++;
+    addWarnPoly(f.geometry,wt,ev,area,exp,'nws_'+i,f);
+  });
+
+  updateAlerts();
+  document.getElementById('acnt').textContent=alerts.length?`(${alerts.length})`:'';
+
+  const ban=document.getElementById('tor-ban');
+  if(tor>0){
+    ban.textContent=`⚠  ${tor} TORNADO WARNING${tor>1?'S':''} ACTIVE — TAKE SHELTER NOW  ⚠`;
+    ban.style.display='block';
+    document.getElementById('upd').innerHTML=
+      `<span style="color:#ff2020;animation:blink 1s steps(1) infinite">⚠ ${tor} TORNADO WARNING${tor>1?'S':''}</span>`;
+    setTimeout(()=>ban.style.display='none',20000);
+  } else {
+    ban.style.display='none';
+  }
+}
+
+// ═══════════════════════════
+// SPC — WATCHES & MCDS
+// ═══════════════════════════
+async function loadSPC(){
+  Object.entries(wrnLyrs).forEach(([k,l])=>{
+    if(k.startsWith('spc')){try{map.removeLayer(l);}catch(e){} delete wrnLyrs[k];}
+  });
+  alerts=alerts.filter(a=>a.src!=='spc');
+
+  // SPC Active Watches
+  try{
+    const res=await fetch('https://www.spc.noaa.gov/products/watch/ActiveWW.geojson',{signal:AbortSignal.timeout(8000)});
+    if(res.ok){
+      const d=await res.json();
+      (d.features||[]).forEach((f,i)=>{
+        const t=String((f.properties.WATCH_TYPE||f.properties.type||'TOR')).toUpperCase();
+        const wt=t.includes('TOR')?'TWA':'SWA';
+        const num=f.properties.WATCH_NUM||f.properties.WNO||i;
+        const ev=`${wt==='TWA'?'Tornado':'Svr T-Storm'} Watch #${num}`;
+        alerts.push({type:wt,event:ev,area:f.properties.STATES||'',exp:'',src:'spc',key:'spc_w'+i});
+        addWarnPoly(f.geometry,wt,ev,f.properties.STATES||'','','spc_w'+i);
+      });
+    }
+  }catch(e){}
+
+  // SPC Active MCDs
+  try{
+    const res=await fetch('https://www.spc.noaa.gov/products/md/ActiveMD.geojson',{signal:AbortSignal.timeout(8000)});
+    if(res.ok){
+      const d=await res.json();
+      (d.features||[]).forEach((f,i)=>{
+        const num=f.properties.MDNUM||i;
+        const txt=(f.properties.CONCERNING||f.properties.text||'').substring(0,60);
+        const ev='SPC MCD #'+num;
+        alerts.push({type:'MCD',event:ev,area:txt,exp:'',src:'spc',key:'spc_m'+i});
+        addWarnPoly(f.geometry,'MCD',ev,txt,'','spc_m'+i);
+      });
+    }
+  }catch(e){}
+
+  updateAlerts();
+}
+
+// ═══════════════════════════
+// ADD WARNING POLYGON
+// ═══════════════════════════
+function addWarnPoly(geom,wt,ev,area,exp,key,feat){
+  if(!wrnVis[wt]||!geom) return;
+  const cfg=WCFG[wt]; if(!cfg) return;
+
+  const rings=geom.type==='Polygon'?[geom.coordinates]:
+               geom.type==='MultiPolygon'?geom.coordinates:[];
+
+  rings.forEach((poly,pi)=>{
+    const ring=poly[0]; if(!ring||ring.length<3) return;
+    const lls=ring.map(([ln,lt])=>[lt,ln]);
+
+    const layer=L.polygon(lls,{
+      color:cfg.c, fillColor:cfg.f,
+      fillOpacity:cfg.fa*wrnOp,
+      weight:cfg.w, opacity:Math.min(1,wrnOp*1.3),
+      dashArray:cfg.d, zIndex:cfg.z,
+    }).addTo(map);
+
+    const expStr=exp?new Date(exp).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZoneName:'short'}):'—';
+
+    // Click: open full NWS statement card
+    layer.on('click', e=>{
+      L.DomEvent.stopPropagation(e);
+      if(feat){
+        showWarnCard(feat);
+      } else {
+        // SPC products — show basic popup
+        layer.bindPopup(`
+          <div style="font-family:Share Tech Mono,monospace;font-size:10px;min-width:180px;">
+            <div style="color:${cfg.c};font-size:12px;font-weight:bold;margin-bottom:4px;">${wt==='TOR'?'⚠ ':''}${ev}</div>
+            <div style="color:#6a90b0;font-size:9px;">${area}</div>
+            ${exp?`<div style="color:#3a5870;font-size:9px;margin-top:2px;">Expires: ${expStr}</div>`:''}
+          </div>`,{maxWidth:260}).openPopup();
+      }
+    });
+
+    // Mouseover: brief tooltip
+    layer.bindTooltip(`<span style="font-family:Share Tech Mono,monospace;font-size:9px;color:${cfg.c};">${ev}<br><span style="color:#6a90b0;font-size:8px;">${area.split(';')[0].substring(0,40)}</span></span>`,{sticky:true,opacity:0.95});
+
+    // Centroid label for key warn types
+    const clat=lls.reduce((s,p)=>s+p[0],0)/lls.length;
+    const clon=lls.reduce((s,p)=>s+p[1],0)/lls.length;
+    if(wt==='TOR'||wt==='TWA'||wt==='SWA'||wt==='MCD'){
+      const lblText=wt==='TOR'?'⚠ TORNADO':wt==='TWA'?ev:wt==='SWA'?ev:ev;
+      const icon=L.divIcon({className:'',
+        html:`<div style="font-family:Share Tech Mono,monospace;font-size:9px;font-weight:bold;
+          color:${cfg.c};background:rgba(4,4,4,.88);border:1px solid ${cfg.c};border-radius:3px;
+          padding:1px 4px;white-space:nowrap;${wt==='TOR'?'animation:blink 1s steps(1) infinite;':''}">${lblText}</div>`,
+        iconSize:[0,0],iconAnchor:[40,9]});
+      const lm=L.marker([clat,clon],{icon,zIndexOffset:cfg.z+100,interactive:false}).addTo(map);
+      wrnLyrs[key+'_l']=lm;
+    }
+
+    wrnLyrs[key+'_'+pi]=layer;
+  });
+}
+
+// ═══════════════════════════
+// ALERT LIST
+// ═══════════════════════════
+function updateAlerts(){
+  const el=document.getElementById('alist');
+  if(!alerts.length){
+    el.innerHTML='<div style="font-family:var(--mono);font-size:10px;color:var(--muted);">No active alerts</div>';
+    return;
+  }
+  const ord={TOR:0,SVR:1,SPS:2,SMW:3,TWA:4,SWA:5,MCD:6,FF:7,FLD:8,WS:9,HEAT:10,FIRE:11,WIND:12,MAR:13,GEN:14};
+  const sorted=[...alerts].sort((a,b)=>(ord[a.type]??99)-(ord[b.type]??99));
+  const dc={TOR:'#ff2020',SVR:'#ff8800',SPS:'#ffd166',SMW:'#00b4ff',TWA:'#ffff00',SWA:'#dbdb00',MCD:'#cc77ff',FF:'#00cc44',FLD:'#00e0a0',WS:'#ff69b4',HEAT:'#ff5e5e',FIRE:'#ff7b00',WIND:'#8fd3ff',MAR:'#4dd0e1',GEN:'#b0bec5'};
+  el.innerHTML=sorted.slice(0,18).map(a=>`
+    <div class="al" onclick="zoomToAlertByKey('${a.key || ''}')">
+      <div class="ad" style="background:${dc[a.type]||'#888'}"></div>
+      <div class="atx">
+        <div class="aev" style="${a.type==='TOR'?'color:#ff6060;':''}">${a.type==='TOR'?'⚠ ':''}${a.event}</div>
+        <div class="aar">${(a.area||'').split(';')[0].substring(0,40)}</div>
+      </div>
+    </div>`).join('');
+  if(sorted.length>18) el.innerHTML+=`<div style="font-family:var(--mono);font-size:8px;color:var(--muted);padding:2px 0;">+${sorted.length-18} more</div>`;
+}
+
+function zoomToAlert(idx){
+  const ord={TOR:0,SVR:1,TWA:2,SWA:3,MCD:4,FF:5,FLD:6,WS:7,SPS:8,SMW:9,HEAT:10,FIRE:11,WIND:12,MAR:13,GEN:14};
+  const sorted=[...alerts].sort((a,b)=>(ord[a.type]??9)-(ord[b.type]??9));
+  const a=sorted[idx]; if(!a) return;
+  // Find the matching polygon layer and zoom to its bounds
+  const key='nws_'+alerts.indexOf(a);
+  // Try to find any matching layer with bounds
+  for(const [k,layer] of Object.entries(wrnLyrs)){
+    if(k.startsWith('nws_') && layer.getBounds){
+      try{
+        const b=layer.getBounds();
+        if(b.isValid()){
+          map.flyToBounds(b.pad(0.3),{duration:1.2,maxZoom:9});
+          msg('Zoomed to: '+a.event);
+          return;
+        }
+      }catch(e){}
+    }
+  }
+  // Fallback: try to find by event name
+  for(const layer of Object.values(wrnLyrs)){
+    if(layer.getBounds){
+      try{ const b=layer.getBounds(); if(b.isValid()){ map.flyToBounds(b.pad(0.3),{duration:1.2,maxZoom:9}); return; } }catch(e){}
+    }
+  }
+}
+
+// ═══════════════════════════
+// TOGGLE WARNING TYPE
+// ═══════════════════════════
+function tw(type){
+  wrnVis[type]=!wrnVis[type];
+  document.getElementById('wt-'+type).classList.toggle('on',wrnVis[type]);
+  // Re-render all warnings
+  Object.values(wrnLyrs).forEach(l=>{ try{map.removeLayer(l);}catch(e){} });
+  wrnLyrs={};
+  const saved=[...alerts]; alerts=[];
+  saved.forEach(a=>{
+    if(a.src==='nws') alerts.push(a);
+    else alerts.push(a);
+  });
+  // Just re-fetch to be safe
+  loadWarnings().then(()=>loadSPC());
+}
+
+// ═══════════════════════════
+// LAYER SWITCHER
+// ═══════════════════════════
+function setLayer(id){
+  if(id==='vel'){
+    alert('Velocity is not connected to a live Doppler velocity source in this build.');
+    return;
+  }
+
+  if(id==='sat'){
+    msg('Satellite disabled — radar only mode');
+    const satBtn=document.getElementById('btn-sat');
+    if(satBtn) satBtn.classList.remove('on');
+    const satTab=document.getElementById('mtab-sat');
+    if(satTab){ satTab.classList.remove('on'); satTab.classList.add('dim'); }
+    updateZoomImagery();
+    return;
+  }
+
+  curLayer='ref';
+  const refBtn=document.getElementById('btn-ref');
+  if(refBtn) refBtn.classList.add('on');
+  const velBtn=document.getElementById('btn-vel');
+  if(velBtn) velBtn.classList.remove('on');
+  document.getElementById('blyr').textContent='Reflectivity (dBZ)';
+  buildLegend();
+  buildRadarLayers();
+  updateZoomImagery();
+}
+
+// ═══════════════════════════
+// OPACITY
+// ═══════════════════════════
+function setOp(which,v){
+  if(which===0){
+    radOp=v/100; document.getElementById('v-rad').textContent=v+'%';
+    if(radLayers[fIdx]) radLayers[fIdx].setOpacity(radOp);
+    if(window.satL&&curLayer==='sat') window.satL.setOpacity(radOp);
+  } else {
+    wrnOp=v/100; document.getElementById('v-wrn').textContent=v+'%';
+    Object.values(wrnLyrs).forEach(l=>{
+      if(l.setStyle) l.setStyle({fillOpacity:0.15*wrnOp,opacity:Math.min(1,wrnOp*1.3)});
+    });
+  }
+}
+
+// ═══════════════════════════
+// LABELS
+// ═══════════════════════════
+function setLbl(v){
+  lblMode=+v;
+  document.getElementById('v-lbl')=['Off','Med','Hi','All'][v]||v;
+  rebuildCities();
+}
+
+const CITIES=[
+  {n:'New York',lat:40.7,lon:-74.0,p:1},{n:'Los Angeles',lat:34.1,lon:-118.2,p:1},{n:'Chicago',lat:41.9,lon:-87.6,p:1},
+  {n:'Houston',lat:29.8,lon:-95.4,p:1},{n:'Phoenix',lat:33.4,lon:-112.1,p:1},{n:'Dallas',lat:32.8,lon:-96.8,p:1},
+  {n:'Seattle',lat:47.6,lon:-122.3,p:1},{n:'Denver',lat:39.7,lon:-104.9,p:1},{n:'Boston',lat:42.4,lon:-71.1,p:1},
+  {n:'Atlanta',lat:33.7,lon:-84.4,p:1},{n:'Miami',lat:25.8,lon:-80.2,p:1},{n:'Minneapolis',lat:44.9,lon:-93.3,p:1},
+  {n:'New Orleans',lat:29.9,lon:-90.1,p:1},{n:'Las Vegas',lat:36.2,lon:-115.1,p:1},{n:'Portland',lat:45.5,lon:-122.7,p:1},
+  {n:'Memphis',lat:35.1,lon:-90.0,p:1},{n:'OKC',lat:35.5,lon:-97.5,p:1},{n:'Kansas City',lat:39.1,lon:-94.6,p:1},
+  {n:'Nashville',lat:36.2,lon:-86.8,p:1},{n:'Detroit',lat:42.3,lon:-83.1,p:1},{n:'St. Louis',lat:38.6,lon:-90.2,p:1},
+  {n:'Philadelphia',lat:40.0,lon:-75.2,p:1},{n:'Austin',lat:30.3,lon:-97.7,p:1},{n:'Charlotte',lat:35.2,lon:-80.8,p:1},
+  {n:'Indianapolis',lat:39.8,lon:-86.2,p:1},{n:'Columbus',lat:40.0,lon:-83.0,p:1},{n:'Pittsburgh',lat:40.4,lon:-80.0,p:1},
+  {n:'Cincinnati',lat:39.1,lon:-84.5,p:1},{n:'Cleveland',lat:41.5,lon:-81.7,p:1},{n:'Baltimore',lat:39.3,lon:-76.6,p:1},
+  {n:'Milwaukee',lat:43.0,lon:-87.9,p:1},{n:'Albuquerque',lat:35.1,lon:-106.7,p:1},{n:'Salt Lake City',lat:40.8,lon:-111.9,p:1},
+  {n:'San Antonio',lat:29.4,lon:-98.5,p:1},{n:'San Diego',lat:32.7,lon:-117.2,p:1},{n:'San Francisco',lat:37.8,lon:-122.4,p:1},
+  {n:'Lubbock',lat:33.6,lon:-101.8,p:2},{n:'Amarillo',lat:35.2,lon:-101.8,p:2},{n:'Tulsa',lat:36.2,lon:-95.9,p:2},
+  {n:'Omaha',lat:41.3,lon:-95.9,p:2},{n:'Wichita',lat:37.7,lon:-97.3,p:2},{n:'Fort Worth',lat:32.7,lon:-97.3,p:2},
+  {n:'Baton Rouge',lat:30.4,lon:-91.2,p:2},{n:'Des Moines',lat:41.6,lon:-93.6,p:2},{n:'Knoxville',lat:35.9,lon:-83.9,p:2},
+  {n:'Peoria',lat:40.7,lon:-89.6,p:2},{n:'Springfield IL',lat:39.8,lon:-89.6,p:2},{n:'Decatur IL',lat:39.8,lon:-88.9,p:2},
+  {n:'Bloomington IL',lat:40.5,lon:-89.0,p:2},{n:'Corpus Christi',lat:27.8,lon:-97.4,p:2},{n:'Shreveport',lat:32.5,lon:-93.8,p:2},
+  {n:'Birmingham',lat:33.5,lon:-86.8,p:2},{n:'Sioux Falls',lat:43.5,lon:-96.7,p:2},{n:'Fargo',lat:46.9,lon:-96.8,p:2},
+  {n:'Billings',lat:45.8,lon:-108.5,p:2},{n:'Boise',lat:43.6,lon:-116.2,p:2},{n:'El Paso',lat:31.8,lon:-106.5,p:2},
+  {n:'Abilene',lat:32.4,lon:-99.7,p:3},{n:'Midland',lat:31.9,lon:-102.1,p:3},{n:'Waco',lat:31.5,lon:-97.1,p:3},
+  {n:'Wichita Falls',lat:33.9,lon:-98.5,p:3},{n:'Lawton',lat:34.6,lon:-98.4,p:3},{n:'Norman',lat:35.2,lon:-97.4,p:3},
+  {n:'Edmond',lat:35.7,lon:-97.5,p:3},{n:'Topeka',lat:39.1,lon:-95.7,p:3},{n:'Joplin',lat:37.1,lon:-94.5,p:3},
+  {n:'Grand Rapids',lat:42.9,lon:-85.7,p:3},{n:'Toledo',lat:41.7,lon:-83.6,p:3},{n:'Dayton',lat:39.8,lon:-84.2,p:3},
+  {n:'Akron',lat:41.1,lon:-81.5,p:3},{n:'Richmond VA',lat:37.5,lon:-77.5,p:3},{n:'Norfolk',lat:36.9,lon:-76.3,p:3},
+  {n:'Raleigh',lat:35.8,lon:-78.6,p:3},{n:'Orlando',lat:28.5,lon:-81.4,p:3},{n:'Tampa',lat:27.9,lon:-82.5,p:3},
+  {n:'Huntsville',lat:34.7,lon:-86.6,p:3},{n:'Mobile',lat:30.7,lon:-88.0,p:3},{n:'Jackson MS',lat:32.3,lon:-90.2,p:3},
+  {n:'Lafayette LA',lat:30.2,lon:-92.0,p:3},{n:'Cheyenne',lat:41.1,lon:-104.8,p:3},{n:'Santa Fe',lat:35.7,lon:-106.0,p:3},
+  {n:'Flagstaff',lat:35.2,lon:-111.6,p:3},{n:'Bend',lat:44.1,lon:-121.3,p:3},{n:'Chattanooga',lat:35.0,lon:-85.3,p:3},
+  {n:'Plainview TX',lat:34.2,lon:-101.7,p:4},{n:'Levelland TX',lat:33.6,lon:-102.4,p:4},{n:'Slaton TX',lat:33.4,lon:-101.6,p:4},
+  {n:'Tahoka TX',lat:33.2,lon:-101.8,p:4},{n:'Brownfield TX',lat:33.2,lon:-102.3,p:4},{n:'Wolfforth TX',lat:33.5,lon:-102.0,p:4},
+  {n:'Idalou TX',lat:33.7,lon:-101.7,p:4},{n:'Littlefield TX',lat:33.9,lon:-102.3,p:4},{n:'Muleshoe TX',lat:34.2,lon:-102.7,p:4},
+  {n:'Hereford TX',lat:34.8,lon:-102.4,p:4},{n:'Canyon TX',lat:34.9,lon:-101.9,p:4},{n:'Pampa TX',lat:35.5,lon:-100.9,p:4},
+  {n:'Borger TX',lat:35.7,lon:-101.4,p:4},{n:'Dodge City KS',lat:37.8,lon:-100.0,p:4},{n:'Liberal KS',lat:37.0,lon:-101.0,p:4},
+  {n:'Elk City OK',lat:35.4,lon:-99.4,p:4},{n:'Woodward OK',lat:36.4,lon:-99.4,p:4},{n:'Ardmore OK',lat:34.2,lon:-97.1,p:4},
+  {n:'Enid OK',lat:36.4,lon:-97.9,p:4},{n:'Guymon OK',lat:36.7,lon:-101.5,p:4},{n:'Pekin IL',lat:40.6,lon:-89.6,p:4},
+  {n:'Tremont IL',lat:40.5,lon:-89.5,p:4},{n:'Mason City IL',lat:40.2,lon:-89.7,p:4},{n:'Petersburg IL',lat:40.0,lon:-89.8,p:4},
+  {n:'Sherman IL',lat:39.9,lon:-89.6,p:4},{n:'Rochester IL',lat:39.7,lon:-89.5,p:4},{n:'Chatham IL',lat:39.7,lon:-89.7,p:4},
+  {n:'Williamsville IL',lat:39.9,lon:-89.5,p:4},{n:'Elkhart IL',lat:40.0,lon:-89.5,p:4},{n:'Clinton IL',lat:40.2,lon:-88.9,p:4},
+  {n:'Maroa IL',lat:40.0,lon:-88.9,p:4},{n:'Forsyth IL',lat:39.9,lon:-88.9,p:4},{n:'Decatur IL',lat:39.8,lon:-88.9,p:3},
+];
+
+function rebuildCities(){
+  if(cityGrp){map.removeLayer(cityGrp);cityGrp=null;}
+  if(lblMode===0) return;
+  const z=map.getZoom();
+  let max=1;
+  if(z>=6&&lblMode>=1)max=2;
+  if(z>=8&&lblMode>=1)max=3;
+  if(z>=10&&lblMode>=1)max=4;
+  cityGrp=L.layerGroup();
+  CITIES.forEach(c=>{
+    if(c.p>max)return;
+    const maj=c.p===1,lrg=c.p===2;
+    const fs=maj?13:lrg?11:c.p===3?10:9;
+    const fc=maj?'#fff':lrg?'#cde4f5':c.p===3?'rgba(180,210,230,.9)':'rgba(155,190,215,.8)';
+    const ds=maj?10:lrg?8:c.p===3?6:5;
+    const icon=L.divIcon({className:'',
+      html:`<div style="font-family:Barlow Condensed,sans-serif;font-size:${fs}px;font-weight:${maj?700:500};color:${fc};background:rgba(4,7,14,.85);padding:2px 5px;border-radius:3px;white-space:nowrap;display:flex;align-items:center;gap:4px;cursor:pointer;border:1px solid rgba(0,212,255,.2);">
+        <div style="width:${ds}px;height:${ds}px;border-radius:50%;background:${fc};flex-shrink:0;box-shadow:0 0 4px ${fc}88;"></div>${c.n}</div>`,
+      iconSize:[0,0],iconAnchor:[0,8]});
+    const mkr=L.marker([c.lat,c.lon],{icon,zIndexOffset:500}).addTo(cityGrp);
+    // Make clickable — show NWS forecast + fly to city
+    mkr.on('click',()=>showCityPanel(c));
+  });
+  cityGrp.addTo(map);
+}
+
+// ═══════════════════════════
+// NEXRAD STATION DOT MARKERS
+// ═══════════════════════════
+let nexradGrp=null, nexradDotsOn=true;
+
+// Full NEXRAD station list with positions for map dots
+const NEXRAD_STATIONS=[
+  {id:'KLBB',lat:33.654,lon:-101.814},{id:'KAMA',lat:35.233,lon:-101.709},
+  {id:'KFWS',lat:32.573,lon:-97.303},{id:'KEWX',lat:29.704,lon:-98.028},
+  {id:'KCRP',lat:27.784,lon:-97.511},{id:'KMAF',lat:31.943,lon:-102.189},
+  {id:'KSJT',lat:31.371,lon:-100.492},{id:'KDYX',lat:32.538,lon:-99.255},{id:'KTLX',lat:35.333,lon:-97.278},
+  {id:'KINX',lat:36.175,lon:-95.564},{id:'KOUN',lat:35.236,lon:-97.460},
+  {id:'KVNX',lat:36.741,lon:-98.128},{id:'KLOT',lat:41.604,lon:-88.085},
+  {id:'KILX',lat:40.151,lon:-89.337},{id:'KVWX',lat:38.260,lon:-87.724},
+  {id:'KLVX',lat:37.975,lon:-85.944},{id:'KNQA',lat:35.345,lon:-89.873},
+  {id:'KLIX',lat:30.337,lon:-89.825},{id:'KPOE',lat:31.155,lon:-92.976},
+  {id:'KSHV',lat:32.451,lon:-93.841},{id:'KAMX',lat:25.611,lon:-80.413},
+  {id:'KTBW',lat:27.705,lon:-82.402},{id:'KMLB',lat:28.113,lon:-80.655},
+  {id:'KEVX',lat:30.564,lon:-85.922},{id:'KATX',lat:48.195,lon:-122.496},
+  {id:'KRTX',lat:45.715,lon:-122.965},{id:'KPDT',lat:45.691,lon:-118.853},
+  {id:'KOTX',lat:47.681,lon:-117.627},{id:'KBLX',lat:45.854,lon:-108.607},
+  {id:'KRIW',lat:43.066,lon:-108.477},{id:'KMTX',lat:41.263,lon:-112.448},
+  {id:'KGJX',lat:39.062,lon:-108.214},{id:'KPUX',lat:38.460,lon:-104.182},
+  {id:'KFTG',lat:39.787,lon:-104.546},{id:'KGLD',lat:39.367,lon:-101.700},
+  {id:'KDDC',lat:37.761,lon:-99.969},{id:'KICT',lat:37.655,lon:-97.443},
+  {id:'KTWX',lat:38.997,lon:-96.233},{id:'KEAX',lat:38.810,lon:-94.264},
+  {id:'KSGF',lat:37.235,lon:-93.401},{id:'KLSX',lat:38.699,lon:-90.683},
+  {id:'KPAH',lat:37.068,lon:-88.772},{id:'KOHX',lat:36.247,lon:-86.563},
+  {id:'KMRX',lat:36.168,lon:-83.402},{id:'KHTX',lat:34.930,lon:-86.084},
+  {id:'KBMX',lat:33.172,lon:-86.770},{id:'KGWX',lat:33.897,lon:-88.329},
+  {id:'KMOB',lat:30.679,lon:-88.240},{id:'KBRO',lat:25.916,lon:-97.419},
+  {id:'KHGX',lat:29.472,lon:-95.079},{id:'KIND',lat:39.708,lon:-86.280},
+  {id:'KDMX',lat:41.731,lon:-93.723},{id:'KDVN',lat:41.612,lon:-90.581},
+  {id:'KARX',lat:43.823,lon:-91.191},{id:'KMPX',lat:44.849,lon:-93.566},
+  {id:'KABR',lat:45.455,lon:-98.413},{id:'KUDX',lat:44.125,lon:-102.830},
+  {id:'KBIS',lat:46.771,lon:-100.760},{id:'KFSD',lat:43.588,lon:-96.730},
+  {id:'KOAX',lat:41.320,lon:-96.367},{id:'KLNX',lat:41.958,lon:-100.576},
+  {id:'KUEX',lat:40.321,lon:-98.442},{id:'KGJX',lat:39.062,lon:-108.214},
+  {id:'KPDT',lat:45.691,lon:-118.853},{id:'KLGX',lat:47.117,lon:-124.106},
+  {id:'KMAX',lat:42.081,lon:-122.717},{id:'KBHX',lat:40.499,lon:-124.292},
+  {id:'KBBX',lat:39.496,lon:-121.632},{id:'KDAX',lat:38.501,lon:-121.678},
+  {id:'KHNX',lat:36.314,lon:-119.632},{id:'KVBX',lat:34.838,lon:-120.397},
+  {id:'KNKX',lat:32.919,lon:-117.042},{id:'KYUX',lat:32.495,lon:-114.657},
+  {id:'KIWA',lat:33.289,lon:-111.670},{id:'KFSX',lat:34.574,lon:-111.198},
+  {id:'KEMX',lat:31.894,lon:-110.630},{id:'KHDX',lat:33.077,lon:-106.123},
+  {id:'KFDX',lat:34.635,lon:-103.630},{id:'KABX',lat:35.150,lon:-106.824},
+  {id:'KPSX',lat:28.756,lon:-97.309},{id:'KDFX',lat:29.273,lon:-100.280},
+];
+
+function buildNexradDots(){
+  if(nexradGrp){map.removeLayer(nexradGrp);nexradGrp=null;}
+  if(!nexradDotsOn||!map) return;
+  const z=map.getZoom();
+  if(z<4) return; // don't show at very low zoom
+  nexradGrp=L.layerGroup();
+  NEXRAD_STATIONS.forEach(s=>{
+    const isActive=s.id===activeStation;
+    const icon=L.divIcon({className:'',
+      html:`<div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;transform:translate(-50%,-50%);">
+        <div style="width:${isActive?22:14}px;height:${isActive?22:14}px;border-radius:50%;
+          background:${isActive?'#00ff88':'rgba(0,212,255,0.15)'};
+          border:${isActive?'3px solid #00ff88':'2px solid #00d4ff'};
+          box-shadow:0 0 ${isActive?'14px #00ff8888':'8px #00d4ff44'};
+          display:flex;align-items:center;justify-content:center;
+          font-family:Share Tech Mono,monospace;font-size:${isActive?8:7}px;
+          color:${isActive?'#000':'#00d4ff'};font-weight:bold;transition:all .2s;">
+          ${isActive?'📡':''}
+        </div>
+        ${z>=6?`<div style="font-family:Share Tech Mono,monospace;font-size:${isActive?10:8}px;color:${isActive?'#00ff88':'#00d4ffaa'};white-space:nowrap;margin-top:2px;font-weight:${isActive?'bold':'normal'};text-shadow:0 0 6px ${isActive?'#00ff88':'#00d4ff'};">${s.id}</div>`:''}
+      </div>`,
+      iconSize:[0,0]});
+    const mkr=L.marker([s.lat,s.lon],{icon,zIndexOffset:600}).addTo(nexradGrp);
+    mkr.on('click',()=>{
+      setStation(s.id);
+      fly(s.lat,s.lon,Math.max(map.getZoom(),8),s.id+' Radar');
+      buildNexradDots(); // refresh active highlight
+    });
+    mkr.bindTooltip(`<b style="color:#00d4ff;">${s.id}</b><br><span style="font-size:8px;color:#86aaca;">Click to view single-site radar</span>`,{sticky:false,opacity:0.95});
+  });
+  nexradGrp.addTo(map);
+}
+
+function toggleNexradDots(){
+  nexradDotsOn=!nexradDotsOn;
+  document.getElementById('ov-nexrad').classList.toggle('on',nexradDotsOn);
+  buildNexradDots();
+}
+
+// ── RADAR AUTO-REFRESH (tiles) ──
+let radarRefreshInterval=null;
+function startRadarAutoRefresh(){
+  if(radarRefreshInterval) clearInterval(radarRefreshInterval);
+  radarRefreshInterval=setInterval(async ()=>{
+    if(!autoOn||curLayer==='sat') return;
+    try{
+      const res=await fetch('https://api.rainviewer.com/public/weather-maps.json');
+      if(!res.ok) return;
+      const data=await res.json();
+      const newFrames=data.radar.past.slice(-12);
+      // Only rebuild if there are new frames
+      const lastNew=newFrames[newFrames.length-1]?.time;
+      const lastOld=rvFrames[rvFrames.length-1]?.time;
+      if(lastNew && lastNew!==lastOld){
+        const wasPlaying=playing;
+        if(wasPlaying){ playing=false; } // pause briefly
+        rvHost=data.host;
+        rvFrames=newFrames;
+        buildRadarLayers();
+        const n=new Date();
+        const ts=p2(n.getUTCHours())+':'+p2(n.getUTCMinutes())+'Z';
+        document.getElementById('upd').textContent='Updated '+ts;
+        msg('Radar auto-refreshed '+ts+' · '+rvFrames.length+' frames');
+        if(wasPlaying){ playing=true; requestAnimationFrame(animLoop); }
+      }
+    }catch(e){ console.warn('Auto-refresh failed',e); }
+  },120000);
+}
+
+// ── STATION ISOLATION MODE ──
+let isolationMode=false;
+
+function enterStationView(stnId){
+  isolationMode=true;
+  // Hide city labels and nexrad dots
+  if(cityGrp) cityGrp.eachLayer(l=>l.setOpacity?l.setOpacity(0):null);
+  if(nexradGrp){ map.removeLayer(nexradGrp); nexradGrp=null; }
+  // Dim SPC overlays (don't remove, just reduce opacity)
+  [1,2,3].forEach(d=>{
+    if(spcLayers[d] && map.hasLayer(spcLayers[d])) spcLayers[d].setStyle({fillOpacity:0.12,opacity:0.4});
+  });
+  // Show banner
+  const ban=document.getElementById('station-banner');
+  const txt=document.getElementById('station-banner-txt');
+  if(ban){ban.classList.add('on');}
+  if(txt){txt.textContent=`📡 ${stnId} — Single Site View`;}
+}
+
+function exitStationView(){
+  isolationMode=false;
+  // Restore city labels
+  rebuildCities();
+  // Restore nexrad dots
+  buildNexradDots();
+  // Restore SPC opacity
+  [1,2,3].forEach(d=>{
+    if(spcLayers[d] && map.hasLayer(spcLayers[d])){
+      const day=d;
+      spcLayers[d].setStyle((feat)=>{
+        const cfg=getSPCColor(feat.properties);
+        const opacity=day===1?0.38:day===2?0.28:0.20;
+        return{fillOpacity:opacity};
+      });
+    }
+  });
+  // Hide banner
+  document.getElementById('station-banner')?.classList.remove('on');
+  // Reset to CONUS
+  setStation(null);
+}
+
+// ── NEXRAD LOOKUP alias ──
+const NEXRAD=NEXRAD_STATIONS;
+
+function nearestNexrad(lat,lon){
+  let best=null,bestD=Infinity;
+  NEXRAD.forEach(s=>{
+    const d=Math.hypot(s.lat-lat,s.lon-lon);
+    if(d<bestD){bestD=d;best=s.id;}
+  });
+  return best;
+}
+
+// ── CITY PANEL: fetch NWS forecast for clicked city ──
+let nwsForecastLayer = null;
+async function showCityPanel(city){
+  // Auto-detect nearest NEXRAD and switch radar
+  const nearest=nearestNexrad(city.lat,city.lon);
+  if(nearest && nearest!==activeStation){
+    setStation(nearest);
+    msg('Radar → '+nearest+' (nearest to '+city.n+')');
+  }
+
+  // Fly to city
+  map.flyTo([city.lat,city.lon],Math.max(map.getZoom(),9),{duration:1.0});
+  dropPin(city.lat,city.lon,city.n);
+
+  // Update right panel
+  document.getElementById('rll').textContent=city.n;
+  document.getElementById('rmode').textContent='Loading forecast...';
+
+  // Fetch NWS point → forecast URL
+  try{
+    const ptRes=await fetch(`https://api.weather.gov/points/${city.lat.toFixed(4)},${city.lon.toFixed(4)}`,{
+      headers:{'User-Agent':'NexRadar/4.0','Accept':'application/geo+json'},
+      signal:AbortSignal.timeout(8000)
+    });
+    if(!ptRes.ok) throw new Error('Point lookup failed');
+    const ptData=await ptRes.json();
+    const props=ptData.properties;
+    const fcUrl=props.forecast;
+    const office=props.cwa||'';
+    const zone=props.forecastZone||'';
+
+    // Fetch hourly forecast
+    const fcRes=await fetch(fcUrl,{
+      headers:{'User-Agent':'NexRadar/4.0'},
+      signal:AbortSignal.timeout(8000)
+    });
+    if(!fcRes.ok) throw new Error('Forecast fetch failed');
+    const fcData=await fcRes.json();
+    const periods=(fcData.properties.periods||[]).slice(0,6);
+
+    // Build forecast HTML in right panel
+    const fcHtml=periods.map(p=>`
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:4px 0;border-bottom:1px solid var(--brd);">
+        <div>
+          <div style="font-family:var(--cond);font-size:11px;font-weight:700;color:#e8f4ff;">${p.name}</div>
+          <div style="font-family:var(--mono);font-size:8px;color:var(--muted);line-height:1.4;">${(p.shortForecast||'').substring(0,30)}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;margin-left:6px;">
+          <div style="font-family:var(--mono);font-size:14px;font-weight:bold;color:${p.isDaytime?'#ffcc44':'#aaccff'};">${p.temperature}°${p.temperatureUnit}</div>
+          <div style="font-family:var(--mono);font-size:8px;color:var(--muted);">${p.windSpeed||''} ${p.windDirection||''}</div>
+        </div>
+      </div>`).join('');
+
+    document.getElementById('rmode').textContent=city.n+' Forecast';
+    document.getElementById('city-fc').innerHTML=`
+      <div style="font-family:var(--cond);font-size:10px;font-weight:700;letter-spacing:1px;color:var(--acc);margin-bottom:5px;">NWS ${office} OFFICE</div>
+      ${fcHtml}
+      <div style="font-family:var(--mono);font-size:8px;color:var(--muted);margin-top:4px;"><a href="https://forecast.weather.gov/MapClick.php?CityName=${encodeURIComponent(city.n)}&state=&site=${office}&textField1=${city.lat}&textField2=${city.lon}" target="_blank" style="color:var(--acc);">Full NWS Forecast ↗</a></div>`;
+  }catch(e){
+    document.getElementById('rmode').textContent='Forecast unavailable';
+    document.getElementById('city-fc').innerHTML=`<div style="font-family:var(--mono);font-size:9px;color:var(--muted);">Could not load NWS forecast.<br>${e.message}</div>`;
+  }
+}
+
+// ── NWS OFFICE QUICK JUMP ──
+async function showNWSOffice(lat,lon,office,name){
+  fly(lat,lon,9,name+' NWS');
+  document.getElementById('rll').textContent=name;
+  document.getElementById('rmode').textContent='Loading NWS '+office+'...';
+  document.getElementById('city-fc').innerHTML='<div style="font-family:var(--mono);font-size:9px;color:var(--muted);">Loading forecast...</div>';
+  await showCityPanel({n:name,lat,lon,p:1});
+}
+
+// ── HRRR COMPOSITE REFLECTIVITY OVERLAY ──
+function toggleHRRR(){
+  hrrrOn=!hrrrOn;
+  ['hrrr-btn','ovbtn-hrrr'].forEach(id=>{
+    const b=document.getElementById(id);
+    if(b){
+      b.classList.toggle('on',hrrrOn);
+      b.textContent=hrrrOn?'🌀 HRRR REFD — ON':'🌀 HRRR REFD Model';
+    }
+  });
+  if(hrrrOn){
+    if(!hrrrLayer){
+      // IEM HRRR composite reflectivity — REFD is the correct product name
+      hrrrLayer=L.tileLayer(
+        'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/hrrr::REFD/{z}/{x}/{y}.png',
+        {opacity:0.70,zIndex:210,maxZoom:12,maxNativeZoom:10,tileSize:256,crossOrigin:true,keepBuffer:2,
+         errorTileUrl:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='}
+      );
+    }
+    hrrrLayer.addTo(map);
+    msg('HRRR REFD overlay on');
+  } else {
+    if(hrrrLayer && map.hasLayer(hrrrLayer)) map.removeLayer(hrrrLayer);
+    msg('HRRR REFD overlay off');
+  }
+  updateQuickAnalysis();
+}
+
+// ── RRFS-A OVERLAY ──
+function toggleRRFS(){
+  rrfsOn=!rrfsOn;
+  const btn=document.getElementById('ovbtn-rrfs');
+  if(btn){btn.classList.toggle('on',rrfsOn);btn.textContent=rrfsOn?'⚡ RRFS-A — ON':'⚡ RRFS-A Composite REFC';}
+  if(rrfsOn){
+    if(!rrfsLayer){
+      rrfsLayer=L.tileLayer(
+        'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/rrfs_refc/{z}/{x}/{y}.png',
+        {opacity:0.72,zIndex:215,maxZoom:12,maxNativeZoom:10,tileSize:256,crossOrigin:true,keepBuffer:2,
+         errorTileUrl:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='}
+      );
+    }
+    rrfsLayer.addTo(map);
+    msg('RRFS-A REFC overlay on');
+  } else {
+    if(rrfsLayer && map.hasLayer(rrfsLayer)) map.removeLayer(rrfsLayer);
+    msg('RRFS-A REFC overlay off');
+  }
+  updateQuickAnalysis();
+}
+
+// ── RADAR STATION SWITCHER ──
+function setStation(stn){
+  activeStation=stn;
+  const astn=document.getElementById('active-stn');
+  if(astn) astn.textContent=stn?stn+' — Single Site':'CONUS Composite';
+  document.querySelectorAll('#stn-list .cb').forEach(b=>{
+    b.classList.toggle('on', b.textContent.includes(stn||'__none__'));
+  });
+  buildRadarLayers();
+  msg(stn?'Single-site radar: '+stn:'CONUS composite radar');
+  updateQuickAnalysis();
+  buildNexradDots();
+  if(stn){ enterStationView(stn); }
+  else {
+    isolationMode=false;
+    document.getElementById('station-banner')?.classList.remove('on');
+    rebuildCities();
+    buildNexradDots();
+  }
+}
+
+// ── WARNING DETAIL CARD (right-click) ──
+function showWarnCard(feat){
+  const p=feat.properties||{};
+  const ev=(p.event||p.headline||'Warning').trim();
+  const wt=EMAP[ev]||'SVR';
+  const cfg=WCFG[wt]||{c:'#888',lbl:ev};
+  const exp=p.expires?new Date(p.expires).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZoneName:'short'}):'—';
+  const upd=p.sent?new Date(p.sent).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZoneName:'short'}):'—';
+  const area=p.areaDesc||'';
+  const headline=p.headline||ev;
+  const desc=(p.description||'').replace(/\n{3,}/g,'\n\n');
+  const instr=p.instruction||'';
+
+  // Parse hazard details from description
+  const hazMatch=desc.match(/HAZARD\.{3}(.*?)(?=\n\n|SOURCE|$)/si);
+  const srcMatch=desc.match(/SOURCE\.{3}(.*?)(?=\n\n|IMPACT|$)/si);
+  const impMatch=desc.match(/IMPACT\.{3}(.*?)(?=\n\n|$)/si);
+
+  const card=document.getElementById('warn-card');
+  document.getElementById('warn-card-title').style.color=cfg.c;
+  document.getElementById('warn-card-title').textContent=(wt==='TOR'?'⚠ ':'')+ev;
+  card.style.borderTop=`3px solid ${cfg.c}`;
+
+  document.getElementById('warn-card-body').innerHTML=`
+    <div class="wc-row">
+      <span class="wc-chip" style="color:${cfg.c};border-color:${cfg.c};background:${cfg.c}18;">Updated ${upd}</span>
+      <span class="wc-chip" style="color:#f6e04a;border-color:#9a8c10;background:#6a600010;">Expires ${exp}</span>
+    </div>
+    ${p.senderName?`<div style="color:#7fb3d0;font-size:9px;font-weight:bold;margin-bottom:4px;">📡 ${p.senderName}</div>`:''}
+    <div style="color:#cce4f5;font-size:9px;margin-bottom:6px;">${headline}</div>
+    <div style="color:#8aaccc;font-size:8.5px;margin-bottom:6px;">📍 ${area}</div>
+    ${hazMatch?`<div style="margin-bottom:4px;"><span class="wc-bold">HAZARD</span> <span style="color:#ffd080;">${hazMatch[1].trim()}</span></div>`:''}
+    ${srcMatch?`<div style="margin-bottom:4px;"><span class="wc-bold">SOURCE</span> ${srcMatch[1].trim()}</div>`:''}
+    ${impMatch?`<div style="margin-bottom:4px;"><span class="wc-bold">IMPACT</span> ${impMatch[1].trim()}</div>`:''}
+    ${desc?`<div class="wc-text">${desc.substring(0,800)}${desc.length>800?'…':''}</div>`:''}
+    ${instr?`<div style="margin-top:6px;padding:5px 8px;background:rgba(255,60,60,.08);border:1px solid rgba(255,60,60,.25);border-radius:4px;font-size:9px;color:#ffaaaa;">${instr}</div>`:''}
+  `;
+  card.classList.add('open');
+}
+
+// ── OUTLOOK BUTTON (modebar) ──
+function toggleOutlookBtn(){
+  toggleSPCDay(1);
+  const on=spcOn[1];
+  document.getElementById('mode-outlook').classList.toggle('on', on);
+  document.getElementById('mode-outlook').classList.toggle('dim', !on);
+}
+
+// ── QUICK ANALYSIS LIVE UPDATE ──
+function updateQuickAnalysis(){
+  const stn=activeStation||'CONUS';
+  const prod=curLayer==='ref'?'N0Q REF':curLayer==='sat'?'SAT IR':'VEL';
+  const d1=spcOn[1]?(spcLayers[1]?'D1 ✓':'D1…'):'';
+  const d2=spcOn[2]?(spcLayers[2]?'D2 ✓':'D2…'):'';
+  const d3=spcOn[3]?(spcLayers[3]?'D3 ✓':'D3…'):'';
+  const ovl=[d1,d2,d3].filter(Boolean).join(' ')||'Off';
+  const mdl=[(hrrrOn?'HRRR':''),( rrfsOn?'RRFS':'')].filter(Boolean).join('+') ||'Off';
+  const anyOvl=spcOn[1]||spcOn[2]||spcOn[3];
+  const anyMdl=hrrrOn||rrfsOn;
+
+  const setSafe=(id,val,color)=>{const el=document.getElementById(id);if(el){el.textContent=val;if(color)el.style.color=color;}};
+  setSafe('qa-stn', stn);
+  setSafe('qa-prod', prod);
+  setSafe('qa-ovl', ovl, anyOvl?'#f6f67a':'#3a5870');
+  setSafe('qa-mdl', mdl, anyMdl?'#00d4ff':'#3a5870');
+
+  // Sync radar overlay label
+  const stnLbl=document.getElementById('ov-stn-lbl');
+  if(stnLbl) stnLbl.textContent=activeStation||'CONUS';
+  // Sync active-stn display
+  const astn=document.getElementById('active-stn');
+  if(astn) astn.textContent=activeStation?activeStation+' — Single Site':'CONUS Composite';
+  // Sync hrrr/rrfs right panel buttons
+  const hb=document.getElementById('ovbtn-hrrr');
+  if(hb) hb.classList.toggle('on',hrrrOn);
+  const rb=document.getElementById('ovbtn-rrfs');
+  if(rb) rb.classList.toggle('on',rrfsOn);
+  // Sync timeline station chip
+  const ts=document.getElementById('tl-stn');
+  if(ts) ts.textContent=activeStation||'CONUS';
+}
+
+// ── WXBAR CHIP SELECT ──
+function wxChipSel(el, id){
+  ['wxchip-radar','wxchip-model','wxchip-spc'].forEach(i=>{
+    const c=document.getElementById(i);
+    if(c) c.classList.toggle('on', c.id===id);
+  });
+}
+
+// ── MINITOOLS ──
+function miniTool(t){
+  document.querySelectorAll('.mtbtn').forEach(b=>b.classList.remove('on'));
+  if(t==='R'){setLayer('ref');event.currentTarget&&event.currentTarget.classList.add('on');}
+  else if(t==='S'){setLayer('sat');event.currentTarget&&event.currentTarget.classList.add('on');}
+  else if(t==='M'){msg('Model overlay: connect HRRR/GFS WMS feed to enable.');event.currentTarget&&event.currentTarget.classList.add('on');}
+  else if(t==='W'){toggleOverlay('outlook');event.currentTarget&&event.currentTarget.classList.add('on');}
+}
+
+// ── MODE TAB SYNC ──
+function setModeTab(btn){
+  document.querySelectorAll('#modebar .mtab:not(#mode-outlook)').forEach(b=>{b.classList.remove('on');b.classList.add('dim');});
+  btn.classList.remove('dim');
+  btn.classList.add('on');
+}
+
+// ═══════════════════════════
+// LEGEND
+// ═══════════════════════════
+function buildLegend(){
+  const m=LAYERS[curLayer];
+  const lc=document.getElementById('lgc');
+  lc.width=lc.offsetWidth||185;
+  const lx=lc.getContext('2d');
+  const n=m.cols.length,bw=lc.width/n;
+  m.cols.forEach((c,i)=>{lx.fillStyle=c;lx.fillRect(Math.floor(i*bw),0,Math.ceil(bw),12);});
+  const tk=document.getElementById('ltks');tk.innerHTML='';
+  [m.stops[0],m.stops[Math.floor(m.stops.length/2)],m.stops[m.stops.length-1]].forEach(v=>{
+    const el=document.createElement('span');el.className='ltk';el.textContent=v;tk.appendChild(el);
+  });
+  document.getElementById('lunit').textContent=m.unit+' — '+m.label + (curLayer==='sat' ? ' (background)' : '');
+}
+
+// ═══════════════════════════
+// PLAYBACK
+// ═══════════════════════════
+function togglePlay(){
+  playing=!playing;
+  const btn=document.getElementById('tl-play');
+  if(btn){btn.textContent=playing?'⏹':'▶';btn.classList.toggle('on',playing);}
+  const pbtn=document.getElementById('pbtn');
+  if(pbtn){pbtn.textContent=playing?'⏹ Stop':'▶ Play';pbtn.classList.toggle('on',playing);}
+  if(playing){
+    lastTs=performance.now();
+    requestAnimationFrame(animLoop);
+  }
+}
+
+function animLoop(ts){
+  if(!playing) return;
+  const delay=800/spd;
+  if(ts-lastTs>=delay){
+    lastTs=ts;
+    const total=rvFrames.length||1;
+    const next=(fIdx+1)%total;
+    showFrame(next);
+    // When we wrap back to frame 0, check if new frames are available
+    if(next===0 && autoOn){ loadRadar().catch(()=>{}); }
+  }
+  requestAnimationFrame(animLoop);
+}
+
+function step(d){
+  const total=rvFrames.length||1;
+  showFrame(((fIdx+d)%total+total)%total);
+}
+
+function setSpd(v){
+  spd=+v;
+  document.getElementById('v-spd').textContent=v+'x';
+  // sync left panel slider display
+  const sl=document.querySelector('#left input[type=range][oninput*="setSpd"]');
+  if(sl) sl.value=v;
+}
+
+function toggleAuto(){autoOn=!autoOn;document.getElementById('auto-btn').classList.toggle('on',autoOn);}
+
+function updateTimelineBar(){
+  const total=rvFrames.length;
+  if(!total) return;
+  const pct=total>1?(fIdx/(total-1))*100:100;
+  const head=document.getElementById('tl-head');
+  if(head) head.style.left=pct+'%';
+  const stn=document.getElementById('tl-stn');
+  if(stn) stn.textContent=activeStation||'CONUS';
+
+  // Draw tick marks on bar (one per frame)
+  const bar=document.getElementById('tl-bar');
+  if(bar && bar.dataset.ticks!==String(total)){
+    bar.dataset.ticks=String(total);
+    // Remove old ticks
+    bar.querySelectorAll('.tl-tick').forEach(t=>t.remove());
+    for(let i=0;i<total;i++){
+      const tick=document.createElement('div');
+      tick.className='tl-tick';
+      tick.style.cssText=`position:absolute;top:0;bottom:0;left:${(i/(total-1))*100}%;width:2px;background:rgba(255,255,255,0.15);pointer-events:none;`;
+      bar.appendChild(tick);
+    }
+  }
+}
+
+function tlSeek(e){
+  const bar=document.getElementById('tl-bar');
+  if(!bar||!rvFrames.length) return;
+  const rect=bar.getBoundingClientRect();
+  const pct=Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width));
+  const idx=Math.round(pct*(rvFrames.length-1));
+  showFrame(idx);
+}
+
+// ═══════════════════════════
+// PIN / NAV
+// ═══════════════════════════
+function dropPin(lat,lon,lbl){
+  if(pinMkr)map.removeLayer(pinMkr);
+  const icon=L.divIcon({className:'',
+    html:`<div style="display:flex;flex-direction:column;align-items:center;transform:translate(-50%,-100%);">
+      <div style="background:rgba(4,7,14,.92);border:1px solid #00d4ff;border-radius:3px;padding:2px 6px;font-family:Share Tech Mono,monospace;font-size:9px;color:#00d4ff;white-space:nowrap;margin-bottom:2px;">${lbl}</div>
+      <div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:9px solid #00d4ff;"></div></div>`,
+    iconSize:[0,0]});
+  pinMkr=L.marker([lat,lon],{icon,zIndexOffset:1000}).addTo(map);
+}
+function fly(lat,lon,z,lbl){
+  map.flyTo([lat,lon],z,{duration:1.2});
+  setTimeout(()=>dropPin(lat,lon,lbl),400);
+}
+function resetV(){map.flyTo([38,-96],5,{duration:1});if(pinMkr){map.removeLayer(pinMkr);pinMkr=null;}}
+
+// ═══════════════════════════
+// SEARCH
+// ═══════════════════════════
+const CDB=CITIES.map(c=>({name:c.n,lat:c.lat,lon:c.lon}));
+function onSrch(){
+  const q=document.getElementById('li').value.trim();
+  if(q.length<2){hideSg();return;}
+  const m=CDB.filter(c=>c.name.toLowerCase().includes(q.toLowerCase())).slice(0,8);
+  if(m.length)showSg(m);else hideSg();
+}
+function showSg(items){
+  const s=document.getElementById('sg');s.innerHTML='';
+  items.forEach(c=>{
+    const el=document.createElement('div');el.className='si';el.textContent=c.name;
+    el.onclick=()=>{fly(c.lat,c.lon,9,c.name);document.getElementById('li').value=c.name;hideSg();};
+    s.appendChild(el);
+  });s.style.display='block';
+}
+function hideSg(){document.getElementById('sg').style.display='none';}
+function onKey(e){if(e.key==='Enter')doSrch();if(e.key==='Escape')hideSg();}
+async function doSrch(){
+  const q=document.getElementById('li').value.trim();if(!q)return;hideSg();
+  const m=CDB.find(c=>c.name.toLowerCase().includes(q.toLowerCase()));
+  if(m){showCityPanel({n:m.name,lat:m.lat,lon:m.lon,p:1});return;}
+  const co=q.match(/(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)/);
+  if(co){fly(+co[1],+co[2],10,q);return;}
+  try{
+    const r=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&countrycodes=us`,{headers:{'Accept-Language':'en'}});
+    const d=await r.json();
+    if(d&&d[0])fly(+d[0].lat,+d[0].lon,9,d[0].display_name.split(',').slice(0,2).join(','));
+    else alert('Not found: '+q);
+  }catch(e){alert('Search error');}
+}
+
+// ═══════════════════════════
+// BOOT
+// ═══════════════════════════
+window.addEventListener('load',()=>{
+  initMap();
+  buildLegend();
+  updateQuickAnalysis();
+  startRadarAutoRefresh();
+  // Sync initial HD chip state
+  const hdc=document.getElementById('wxchip-hd');
+  if(hdc) hdc.classList.toggle('on', highDetailOn);
+  setTimeout(()=>{rebuildCities();buildNexradDots();},800);
+});
+document.addEventListener('click',e=>{if(!e.target.closest('#sbar'))hideSg();});
+</script>
+</body>
+</html>
